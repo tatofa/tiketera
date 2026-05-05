@@ -2,13 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
-:root { color-scheme: light; }
-body { @apply bg-slate-50 text-slate-950 antialiased; }
+:root { color-scheme: dark; }
+body { @apply bg-night-900 text-orange-50 antialiased; }
 a { @apply transition-colors; }
 .container-page { @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8; }
-.card { @apply rounded-2xl border border-slate-200 bg-white shadow-sm; }
-.btn-primary { @apply inline-flex items-center justify-center rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50; }
-.btn-secondary { @apply inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50; }
-.input { @apply w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none ring-brand-500 focus:ring-2; }
-.label { @apply text-sm font-semibold text-slate-700; }
-.badge { @apply inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold; }
+.card { @apply rounded-2xl border border-orange-500/20 bg-zinc-950/85 shadow-sm shadow-orange-950/30; }
+.btn-primary { @apply inline-flex items-center justify-center rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-black text-white shadow-glow hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-50; }
+.btn-secondary { @apply inline-flex items-center justify-center rounded-xl border border-orange-500/30 bg-orange-500/10 px-4 py-2.5 text-sm font-bold text-orange-50 hover:bg-orange-500/20 disabled:cursor-not-allowed disabled:opacity-50; }
+.input { @apply w-full rounded-xl border border-orange-500/30 bg-black/40 px-3 py-2 text-sm text-orange-50 outline-none ring-brand-500 placeholder:text-orange-100/40 focus:ring-2; }
+.label { @apply text-sm font-semibold text-orange-100; }
+.badge { @apply inline-flex items-center rounded-full bg-orange-500/15 px-2.5 py-1 text-xs font-bold text-orange-200 ring-1 ring-orange-500/20; }
