@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { Bell, CalendarPlus, ChevronDown, LogIn, LogOut, QrCode, Ticket, UserRound } from 'lucide-react';
+import { Bell, CalendarPlus, ChevronDown, LogIn, LogOut, Ticket, UserRound } from 'lucide-react';
 import { createBrowserSupabaseClient } from '@/lib/supabase';
 
 type Role = 'super_admin' | 'admin' | 'producer' | 'rrpp' | 'accreditor' | 'buyer';
@@ -15,35 +15,56 @@ type SessionState = {
   roles: Role[];
 };
 
+const emptyState: SessionState = { loading: false, logged: false, name: '', email: '', roles: [] };
+
 export default function AppHeader() {
   const [open, setOpen] = useState(false);
-  const [state, setState] = useState<SessionState>({ loading: true, logged: false, name: '', email: '', roles: [] });
+  const [state, setState] = useState<SessionState>({ ...emptyState, loading: true });
 
   useEffect(() => {
     let mounted = true;
+    const supabase = createBrowserSupabaseClient();
+
     async function load() {
-      const supabase = createBrowserSupabaseClient();
       if (!supabase) {
-        if (mounted) setState({ loading: false, logged: false, name: '', email: '', roles: [] });
+        if (mounted) setState(emptyState);
         return;
       }
+
       const { data } = await supabase.auth.getSession();
       const user = data.session?.user;
       if (!user) {
-        if (mounted) setState({ loading: false, logged: false, name: '', email: '', roles: [] });
+        if (mounted) setState(emptyState);
         return;
       }
+
       const roleSet = new Set<Role>(['buyer']);
       let displayName = String(user.user_metadata?.full_name ?? '').trim();
       const { data: profile } = await supabase.from('profiles').select('full_name, role, active').eq('id', user.id).maybeSingle();
       if (profile?.full_name) displayName = profile.full_name;
       if (profile?.active && profile.role) roleSet.add(profile.role as Role);
-      const { data: assigned } = await supabase.from('user_role_assignments').select('role, active').eq('profile_id', user.id).eq('active', true);
+
+      const { data: assigned } = await supabase
+        .from('user_role_assignments')
+        .select('role, active')
+        .eq('profile_id', user.id)
+        .eq('active', true);
       assigned?.forEach((row: any) => roleSet.add(row.role as Role));
+
       if (mounted) setState({ loading: false, logged: true, name: displayName || user.email || 'Usuario', email: user.email ?? '', roles: Array.from(roleSet) });
     }
+
     load();
-    return () => { mounted = false; };
+    const { data: subscription } = supabase?.auth.onAuthStateChange(() => {
+      setTimeout(load, 0);
+    }) ?? { data: { subscription: null } };
+
+    window.addEventListener('focus', load);
+    return () => {
+      mounted = false;
+      window.removeEventListener('focus', load);
+      subscription.subscription?.unsubscribe();
+    };
   }, []);
 
   const isAdmin = state.roles.some((role) => role === 'super_admin' || role === 'admin');
@@ -103,6 +124,7 @@ export default function AppHeader() {
                   <div className="border-b border-black/10 px-5 py-4">
                     <p className="font-black">{state.name}</p>
                     <p className="truncate text-xs opacity-70">{state.email}</p>
+                    <p className="mt-1 text-xs font-bold opacity-80">{state.roles.join(' · ')}</p>
                   </div>
                   <div className="py-2">
                     {menuItems.map((item) => <Link key={item.href} href={item.href} onClick={() => setOpen(false)} className="block px-5 py-2.5 text-sm font-semibold hover:bg-black/10">{item.label}</Link>)}
