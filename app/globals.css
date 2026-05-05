@@ -2,13 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
-:root { color-scheme: light; }
-body { @apply bg-slate-50 text-slate-950 antialiased; }
+:root { color-scheme: dark; }
+body { @apply bg-night-950 text-disco-white antialiased; background-image: radial-gradient(circle at 12% 0%, rgba(239,35,60,.30), transparent 28%), radial-gradient(circle at 82% 8%, rgba(220,20,60,.20), transparent 30%), linear-gradient(135deg, #030303 0%, #070707 42%, #17040a 100%); }
 a { @apply transition-colors; }
 .container-page { @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8; }
-.card { @apply rounded-2xl border border-slate-200 bg-white shadow-sm; }
-.btn-primary { @apply inline-flex items-center justify-center rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50; }
-.btn-secondary { @apply inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50; }
-.input { @apply w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none ring-brand-500 focus:ring-2; }
-.label { @apply text-sm font-semibold text-slate-700; }
-.badge { @apply inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold; }
+.card { @apply rounded-2xl border border-white/10 bg-black/75 shadow-sm shadow-black/60 backdrop-blur; }
+.btn-primary { @apply inline-flex items-center justify-center rounded-xl bg-gradient-to-r from-brand-700 via-brand-600 to-disco-redSoft px-4 py-2.5 text-sm font-black text-white shadow-redglow hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50; }
+.btn-secondary { @apply inline-flex items-center justify-center rounded-xl border border-white/45 bg-white/10 px-4 py-2.5 text-sm font-bold text-white shadow-whiteglow hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-50; }
+.input { @apply w-full rounded-xl border border-white/15 bg-black/60 px-3 py-2 text-sm text-white outline-none ring-brand-500 placeholder:text-white/35 focus:ring-2; }
+.label { @apply text-sm font-semibold text-white; }
+.badge { @apply inline-flex items-center rounded-full bg-brand-600/20 px-2.5 py-1 text-xs font-bold text-red-100 ring-1 ring-brand-500/35; }

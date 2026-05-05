@@ -6,13 +6,32 @@ const config: Config = {
     extend: {
       colors: {
         brand: {
-          50: '#eef2ff',
-          100: '#e0e7ff',
-          500: '#6366f1',
-          600: '#4f46e5',
-          700: '#4338ca',
-          900: '#312e81'
+          50: '#fff1f2',
+          100: '#ffe4e6',
+          500: '#ef233c',
+          600: '#dc143c',
+          700: '#b80f2f',
+          900: '#3b0710'
+        },
+        disco: {
+          red: '#ef233c',
+          redDark: '#8f0f23',
+          redSoft: '#ff4d64',
+          white: '#fff7f7',
+          black: '#050505',
+          gray: '#252632'
+        },
+        night: {
+          950: '#030303',
+          900: '#070707',
+          800: '#111111',
+          700: '#1c1c1f'
         }
+      },
+      boxShadow: {
+        glow: '0 0 44px rgba(239, 35, 60, 0.28)',
+        redglow: '0 0 38px rgba(239, 35, 60, 0.34)',
+        whiteglow: '0 0 28px rgba(255, 255, 255, 0.14)'
       }
     }
   },
