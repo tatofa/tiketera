@@ -3,19 +3,32 @@ from enum import Enum
 from io import StringIO
 from typing import Optional
 import csv
+import os
 
 import jwt
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 
-app = FastAPI(title="CHNG Ticketera API", version="0.2.0")
-engine = create_engine("sqlite:///ticketera.db")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///ticketera.db")
+JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret-change")
+CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "*").split(",") if o.strip()]
+HOLD_MINUTES = int(os.getenv("HOLD_MINUTES", "10"))
+
+app = FastAPI(title="CHNG Ticketera API", version="0.3.0")
+engine = create_engine(DATABASE_URL)
 pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
-SECRET = "dev-secret-change"
-HOLD_MINUTES = 10
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 class Role(str, Enum):
@@ -136,7 +149,7 @@ def create_db():
 
 
 def mk_token(user: User) -> str:
-    return jwt.encode({"sub": user.id, "role": user.role.value}, SECRET, algorithm="HS256")
+    return jwt.encode({"sub": user.id, "role": user.role.value}, JWT_SECRET, algorithm="HS256")
 
 
 def current_user(authorization: Optional[str] = Header(None)) -> User:
@@ -144,7 +157,7 @@ def current_user(authorization: Optional[str] = Header(None)) -> User:
         raise HTTPException(status_code=401, detail="Missing token")
     token = authorization.split(" ", 1)[1]
     try:
-        payload = jwt.decode(token, SECRET, algorithms=["HS256"])
+        payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
     except jwt.PyJWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
@@ -183,9 +196,15 @@ def startup():
 
 @app.get("/health")
 def health():
-    return {"ok": True, "version": "0.2.0"}
+    db_ok = True
+    try:
+        with Session(engine) as session:
+            session.exec(select(User).limit(1)).all()
+    except Exception:
+        db_ok = False
+    return {"ok": True, "db": db_ok, "version": "0.3.0"}
 
-
+# existing endpoints unchanged below
 @app.post("/auth/register")
 def register(data: RegisterIn):
     with Session(engine) as session:
@@ -198,7 +217,6 @@ def register(data: RegisterIn):
         session.refresh(user)
         return {"id": user.id, "email": user.email, "role": user.role}
 
-
 @app.post("/auth/login")
 def login(data: LoginIn):
     with Session(engine) as session:
@@ -206,7 +224,6 @@ def login(data: LoginIn):
         if not user or not pwd.verify(data.password, user.password_hash):
             raise HTTPException(status_code=401, detail="invalid credentials")
         return {"access_token": mk_token(user)}
-
 
 @app.post("/events")
 def create_event(data: EventIn, _: User = Depends(require_roles(Role.admin, Role.organizer))):
@@ -217,7 +234,6 @@ def create_event(data: EventIn, _: User = Depends(require_roles(Role.admin, Role
         session.refresh(event)
         return event
 
-
 @app.get("/events")
 def list_events(published_only: bool = True):
     with Session(engine) as session:
@@ -225,7 +241,6 @@ def list_events(published_only: bool = True):
         if published_only:
             q = q.where(Event.published == True)
         return session.exec(q).all()
-
 
 @app.patch("/events/{event_id}/publish")
 def publish_event(event_id: int, published: bool, _: User = Depends(require_roles(Role.admin, Role.organizer))):
@@ -239,7 +254,6 @@ def publish_event(event_id: int, published: bool, _: User = Depends(require_role
         session.refresh(event)
         return event
 
-
 @app.post("/events/{event_id}/ticket-types")
 def create_ticket_type(event_id: int, data: TicketTypeIn, _: User = Depends(require_roles(Role.admin, Role.organizer))):
     with Session(engine) as session:
@@ -252,7 +266,6 @@ def create_ticket_type(event_id: int, data: TicketTypeIn, _: User = Depends(requ
         session.refresh(tt)
         return tt
 
-
 @app.post("/promos")
 def create_promo(data: PromoIn, _: User = Depends(require_roles(Role.admin, Role.organizer))):
     with Session(engine) as session:
@@ -261,7 +274,6 @@ def create_promo(data: PromoIn, _: User = Depends(require_roles(Role.admin, Role
         session.commit()
         session.refresh(promo)
         return promo
-
 
 @app.post("/cart/reserve")
 def reserve_cart(data: CartIn, user: User = Depends(require_roles(Role.buyer, Role.admin))):
@@ -276,18 +288,12 @@ def reserve_cart(data: CartIn, user: User = Depends(require_roles(Role.buyer, Ro
         if tt.stock < data.quantity:
             raise HTTPException(status_code=400, detail="insufficient stock")
         tt.stock -= data.quantity
-        hold = CartReservation(
-            user_id=user.id,
-            ticket_type_id=data.ticket_type_id,
-            quantity=data.quantity,
-            expires_at=now + timedelta(minutes=HOLD_MINUTES),
-        )
+        hold = CartReservation(user_id=user.id, ticket_type_id=data.ticket_type_id, quantity=data.quantity, expires_at=now + timedelta(minutes=HOLD_MINUTES))
         session.add(hold)
         session.add(tt)
         session.commit()
         session.refresh(hold)
         return {"reservation_id": hold.id, "expires_at": hold.expires_at}
-
 
 @app.post("/checkout")
 def checkout(data: CheckoutIn, user: User = Depends(require_roles(Role.buyer, Role.admin))):
@@ -297,40 +303,28 @@ def checkout(data: CheckoutIn, user: User = Depends(require_roles(Role.buyer, Ro
         hold = session.get(CartReservation, data.reservation_id)
         if not hold or hold.user_id != user.id:
             raise HTTPException(status_code=404, detail="reservation not found")
-
         tt = session.get(TicketType, hold.ticket_type_id)
         subtotal = round(tt.price * hold.quantity, 2)
         discount_amount = 0.0
-
         if data.promo_code:
             promo = session.exec(select(PromoCode).where(PromoCode.code == data.promo_code)).first()
             if not promo or not promo.active or promo.expires_at < now:
                 raise HTTPException(status_code=400, detail="invalid promo")
             discount_amount = round(subtotal * (promo.discount_percent / 100), 2)
-
         total = max(round(subtotal - discount_amount, 2), 0)
-        order = Order(
-            user_id=user.id,
-            subtotal=subtotal,
-            discount_amount=discount_amount,
-            total=total,
-            payment_method=data.payment_method,
-        )
+        order = Order(user_id=user.id, subtotal=subtotal, discount_amount=discount_amount, total=total, payment_method=data.payment_method)
         session.add(order)
         session.commit()
         session.refresh(order)
-
         tickets = []
         for i in range(hold.quantity):
             qr = f"TK-{order.id}-{tt.id}-{i}-{int(now.timestamp())}"
             ticket = Ticket(order_id=order.id, ticket_type_id=tt.id, qr_code=qr)
             session.add(ticket)
             tickets.append(qr)
-
         session.delete(hold)
         session.commit()
         return {"order_id": order.id, "total": total, "subtotal": subtotal, "discount": discount_amount, "tickets": tickets}
-
 
 @app.post("/orders/{order_id}/refund")
 def refund_order(order_id: int, _: User = Depends(require_roles(Role.admin, Role.organizer))):
@@ -351,7 +345,6 @@ def refund_order(order_id: int, _: User = Depends(require_roles(Role.admin, Role
         session.commit()
         return {"ok": True, "order_id": order_id, "status": "refunded"}
 
-
 @app.post("/validate/{qr_code}")
 def validate_ticket(qr_code: str, _: User = Depends(require_roles(Role.validator, Role.admin))):
     with Session(engine) as session:
@@ -365,19 +358,13 @@ def validate_ticket(qr_code: str, _: User = Depends(require_roles(Role.validator
         session.commit()
         return {"valid": True, "ticket_id": ticket.id}
 
-
 @app.get("/me/orders")
 def my_orders(user: User = Depends(current_user)):
     with Session(engine) as session:
         return session.exec(select(Order).where(Order.user_id == user.id)).all()
 
-
 @app.get("/admin/reports/sales")
-def sales_report(
-    event_id: Optional[int] = Query(default=None),
-    as_csv: bool = False,
-    _: User = Depends(require_roles(Role.admin, Role.organizer)),
-):
+def sales_report(event_id: Optional[int] = Query(default=None), as_csv: bool = False, _: User = Depends(require_roles(Role.admin, Role.organizer))):
     with Session(engine) as session:
         orders = session.exec(select(Order).where(Order.status == "paid")).all()
         rows = []
@@ -389,12 +376,10 @@ def sales_report(
             if event_id and tt and tt.event_id != event_id:
                 continue
             rows.append({"order_id": o.id, "total": o.total, "created_at": o.created_at.isoformat(), "payment_method": o.payment_method})
-
         if as_csv:
             buffer = StringIO()
             writer = csv.DictWriter(buffer, fieldnames=["order_id", "total", "created_at", "payment_method"])
             writer.writeheader()
             writer.writerows(rows)
             return PlainTextResponse(buffer.getvalue(), media_type="text/csv")
-
         return rows
