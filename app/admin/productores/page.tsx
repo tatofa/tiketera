@@ -1,0 +1,5 @@
+import { demoEvents } from '@/lib/demo-data';
+
+export default function ProductoresPage(){
+ return <section className="container-page py-10"><p className="font-semibold text-brand-700">Organizadores</p><h1 className="text-4xl font-black">Productores</h1><p className="mt-2 text-slate-600">Vista para administrar productores, sus eventos, capacidad vendida y acceso a reportes propios.</p><div className="mt-8 grid gap-4 md:grid-cols-2">{demoEvents.map(event=><div key={event.id} className="card p-6"><h2 className="text-xl font-black">Productor de {event.name}</h2><p className="mt-1 text-slate-600">Evento: {event.name}</p><p className="mt-3 text-sm">Capacidad: <strong>{event.capacity}</strong></p><p className="text-sm">Funciones: <strong>{event.dates.length}</strong></p><p className="text-sm">Sectores: <strong>{event.sectors.map(s=>s.name).join(', ')}</strong></p><div className="mt-5 rounded-xl bg-slate-50 p-3 text-sm text-slate-700">Permisos: editar eventos propios, ver ventas propias, exportar reportes y crear links comerciales.</div></div>)}</div></section>
+}

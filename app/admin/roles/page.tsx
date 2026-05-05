@@ -1,0 +1,8 @@
+import { demoUsers, roleLabels, rolePermissions, type Permission, type PlatformRole } from '@/lib/platform-config';
+
+const permissions: Permission[] = ['events.manage_all','events.manage_own','sales.view_all','sales.view_own','sales.view_rrpp','service_fees.manage','users.manage','tickets.validate','reports.export','links.manage_own'];
+const roles = Object.keys(roleLabels) as PlatformRole[];
+
+export default function RolesPage(){
+ return <section className="container-page py-10"><p className="font-semibold text-brand-700">Seguridad</p><h1 className="text-4xl font-black">Roles y permisos</h1><p className="mt-2 max-w-3xl text-slate-600">Base para RBAC. El admin general ve todo; productores ven sus eventos; RRPP ven sus links y ventas; acreditadores solo validan entradas; compradores gestionan sus tickets.</p><div className="mt-8 overflow-x-auto rounded-2xl border bg-white"><table className="min-w-full text-sm"><thead className="bg-slate-50"><tr><th className="p-3 text-left">Permiso</th>{roles.map(role=><th key={role} className="p-3 text-left">{roleLabels[role]}</th>)}</tr></thead><tbody>{permissions.map(permission=><tr key={permission} className="border-t"><td className="p-3 font-mono text-xs">{permission}</td>{roles.map(role=><td key={role} className="p-3">{rolePermissions[role].includes(permission)?'✅':'—'}</td>)}</tr>)}</tbody></table></div><div className="mt-8 grid gap-4 md:grid-cols-3">{demoUsers.map(user=><div key={user.id} className="card p-5"><p className="font-black">{user.name}</p><p className="text-sm text-slate-600">{user.email}</p><p className="mt-2 text-xs font-bold uppercase text-brand-700">{roleLabels[user.role]}</p></div>)}</div></section>
+}
