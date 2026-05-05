@@ -1,2 +1,0 @@
-import Link from 'next/link';
-export default function ErrorPage(){return <section className="container-page py-16"><div className="card mx-auto max-w-xl p-8 text-center"><h1 className="text-3xl font-black">No pudimos procesar el pago</h1><p className="mt-3 text-slate-600">Reintentá o elegí otro medio de pago.</p><Link href="/checkout" className="btn-primary mt-6">Volver al checkout</Link></div></section>}
