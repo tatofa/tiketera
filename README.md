@@ -1,23 +1,36 @@
 # Ticketera CHNG
 
-Implementación inicial (MVP técnico) de una API para venta y validación de entradas.
+MVP funcional de ticketera listo para desplegar en **Vercel** (backend serverless con FastAPI).
 
-## Funcionalidades implementadas
+## Incluye
 
-- Autenticación con roles (`admin`, `organizer`, `validator`, `buyer`).
-- Gestión de eventos y publicación/despublicación.
-- Gestión de tipos de entrada por evento con precio, stock y ventana de venta.
-- Checkout básico con descuento de stock y emisión de tickets con QR único.
-- Validación de tickets con detección de tickets ya usados.
-- Consulta de órdenes del usuario autenticado.
+- RBAC: `admin`, `organizer`, `validator`, `buyer`
+- Eventos + publicación
+- Tipos de entrada con precio/stock/ventana de venta
+- Carrito con reserva temporal (`/cart/reserve`)
+- Checkout con método de pago y código promo
+- Tickets con QR único y validación anti-reuso
+- Reembolsos administrativos
+- Reporte de ventas JSON/CSV
 
-## Stack
+## Estructura
 
-- FastAPI
-- SQLModel + SQLite
-- JWT (PyJWT)
+- `app/main.py`: API principal
+- `api/index.py`: entrypoint para Vercel Python runtime
+- `vercel.json`: routing/build en Vercel
 
-## Ejecución local
+## Deploy en Vercel
+
+1. Subir repo a GitHub.
+2. Crear proyecto en Vercel e importar el repo.
+3. En **Settings > Environment Variables**, configurar:
+   - `PYTHONUNBUFFERED=1`
+4. Deploy.
+
+> Nota: este MVP usa SQLite (`ticketera.db`). En Vercel serverless el filesystem es efímero.
+> Para producción real, cambia a Postgres (Neon/Supabase/RDS) antes de pruebas de carga.
+
+## Local
 
 ```bash
 python -m venv .venv
@@ -26,24 +39,11 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-Documentación interactiva:
-- Swagger UI: `http://127.0.0.1:8000/docs`
+Swagger: `http://127.0.0.1:8000/docs`
 
-## Flujo rápido
+## Próximo paso recomendado (para que te funcione bien en Vercel)
 
-1. Registrar usuario administrador en `POST /auth/register`.
-2. Iniciar sesión en `POST /auth/login` y copiar `access_token`.
-3. Crear evento con `POST /events` (Bearer token).
-4. Publicar evento con `PATCH /events/{event_id}/publish?published=true`.
-5. Crear tipo de entrada en `POST /events/{event_id}/ticket-types`.
-6. Registrar usuario comprador, login y ejecutar `POST /checkout`.
-7. Validar ticket con un usuario `validator` en `POST /validate/{qr_code}`.
-
-## Notas de alcance
-
-Este MVP prioriza el flujo principal de negocio y deja para próximas iteraciones:
-- Pasarelas de pago reales.
-- Carrito con expiración temporal (hold).
-- Envío de email y generación PDF/wallet.
-- Dashboard administrativo con métricas y reportes.
-- Multi-moneda y multi-idioma.
+- Migrar persistencia de SQLite a Postgres.
+- Mover `SECRET` a variable de entorno.
+- Integrar pasarela real (Stripe/MercadoPago).
+- Agregar frontend (Next.js) consumiendo esta API.
