@@ -6,16 +6,16 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { CreditCard, ShieldCheck, Ticket } from 'lucide-react';
 import { Store } from '@/lib/store';
 import { createBrowserSupabaseClient } from '@/lib/supabase';
-import { serviceFeeConfig } from '@/lib/platform-config';
 import type { Event } from '@/lib/types';
 
+type FeeConfig = { mode: 'percent' | 'fixed'; value: number; currency: string };
+
 function ars(value: number) {
-  return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(value);
+  return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(value || 0);
 }
 
-function serviceFee(subtotal: number) {
-  const raw = subtotal * (serviceFeeConfig.defaultPercentage / 100) + serviceFeeConfig.defaultFixedAmount;
-  return Math.min(serviceFeeConfig.maxFee, Math.max(serviceFeeConfig.minFee, raw));
+function calcServiceFee(subtotal: number, fee: FeeConfig) {
+  return fee.mode === 'percent' ? Math.round(subtotal * (fee.value / 100)) : Math.round(fee.value);
 }
 
 function CheckoutContent() {
@@ -23,11 +23,16 @@ function CheckoutContent() {
   const params = useSearchParams();
   const [events, setEvents] = useState<Event[]>([]);
   const [buyer, setBuyer] = useState({ name: '', email: '' });
+  const [feeConfig, setFeeConfig] = useState<FeeConfig>({ mode: 'percent', value: 12, currency: 'ARS' });
   const qty = Math.max(1, Number(params.get('qty') ?? params.get('quantity') ?? 1));
 
   useEffect(() => {
     setEvents(Store.events());
-    async function loadBuyer() {
+    async function load() {
+      const feeRes = await fetch('/api/service-fee');
+      const feeJson = await feeRes.json().catch(() => ({}));
+      if (feeJson.fee) setFeeConfig(feeJson.fee);
+
       const supabase = createBrowserSupabaseClient();
       if (!supabase) return;
       const { data } = await supabase.auth.getSession();
@@ -36,7 +41,7 @@ function CheckoutContent() {
       const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', user.id).maybeSingle();
       setBuyer({ name: profile?.full_name || user.user_metadata?.full_name || '', email: user.email || '' });
     }
-    loadBuyer();
+    load();
   }, []);
 
   const selected = useMemo(() => {
@@ -52,8 +57,8 @@ function CheckoutContent() {
   }
 
   const subtotal = selected.ticketType.price * qty;
-  const fee = serviceFee(subtotal);
-  const total = subtotal + fee;
+  const serviceFee = calcServiceFee(subtotal, feeConfig);
+  const total = subtotal + serviceFee;
   const orderId = `ord_${Date.now()}`;
 
   function pay() {
@@ -63,7 +68,7 @@ function CheckoutContent() {
   return (
     <section className="container-page py-12">
       <h1 className="text-5xl font-black text-white">Checkout</h1>
-      <p className="mt-2 text-white/65">Revisá el detalle antes de pagar. El costo de servicio siempre lo abona el comprador.</p>
+      <p className="mt-2 text-white/65">Revisá el detalle antes de pagar.</p>
       <div className="mt-10 grid gap-8 lg:grid-cols-[1.35fr_.75fr]">
         <div className="card p-7">
           <h2 className="text-2xl font-black text-white">Datos del comprador</h2>
@@ -72,7 +77,7 @@ function CheckoutContent() {
             <label><span className="label">Email</span><input className="input mt-1" value={buyer.email} onChange={(e) => setBuyer({ ...buyer, email: e.target.value })} placeholder="email@dominio.com" /></label>
           </div>
           <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-5">
-            <div className="flex items-start gap-3"><ShieldCheck className="mt-1 text-red-200"/><div><p className="font-black text-white">Pago seguro</p><p className="mt-1 text-sm text-white/65">El pago real se conecta con Mercado Pago, Stripe u otro proveedor. El total ya incluye el costo de servicio.</p></div></div>
+            <div className="flex items-start gap-3"><ShieldCheck className="mt-1 text-red-200"/><div><p className="font-black text-white">Pago seguro</p><p className="mt-1 text-sm text-white/65">El pago real se conecta con Mercado Pago, Stripe u otro proveedor.</p></div></div>
           </div>
           <button onClick={pay} className="btn-primary mt-6 w-full"><CreditCard size={18} className="mr-2"/>Pagar {ars(total)}</button>
         </div>
@@ -83,9 +88,8 @@ function CheckoutContent() {
             <div className="flex items-start gap-3"><Ticket className="mt-1 text-red-200"/><div><h3 className="font-black text-white">{selected.event.name}</h3><p className="mt-1 text-white/55">{selected.ticketType.name} × {qty}</p></div></div>
           </div>
           <div className="mt-6 space-y-3 border-b border-white/15 pb-5 text-sm">
-            <div className="flex justify-between gap-4 text-white/70"><span>Entradas</span><strong className="text-white">{ars(subtotal)}</strong></div>
-            <div className="flex justify-between gap-4 text-white/70"><span>Costo de servicio</span><strong className="text-white">{ars(fee)}</strong></div>
-            <p className="rounded-xl bg-white/5 p-3 text-xs text-white/55">Cargo calculado: {serviceFeeConfig.defaultPercentage}% + {ars(serviceFeeConfig.defaultFixedAmount)}, con mínimo {ars(serviceFeeConfig.minFee)} y máximo {ars(serviceFeeConfig.maxFee)}.</p>
+            <div className="flex justify-between gap-4 text-white/70"><span>Entrada</span><strong className="text-white">{ars(subtotal)}</strong></div>
+            <div className="flex justify-between gap-4 text-white/70"><span>Cargo por servicio</span><strong className="text-white">{ars(serviceFee)}</strong></div>
           </div>
           <div className="mt-5 flex items-center justify-between text-2xl font-black text-white"><span>Total</span><span>{ars(total)}</span></div>
         </aside>
