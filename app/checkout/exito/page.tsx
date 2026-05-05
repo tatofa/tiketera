@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { CheckCircle2 } from 'lucide-react';
+import { Suspense } from 'react';
 
 function SuccessContent() {
   const params = useSearchParams();
