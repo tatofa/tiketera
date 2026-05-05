@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { BarChart3, BadgeCheck, Banknote, Link2, LockKeyhole, Percent, ShieldCheck, Users } from 'lucide-react';
+import { BarChart3, BadgeCheck, Banknote, Link2, LockKeyhole, Percent, ShieldCheck, UserPlus, Users } from 'lucide-react';
 import Stats from '@/components/Stats';
 import { Store } from '@/lib/store';
 import { money } from '@/lib/format';
@@ -17,7 +17,7 @@ export default function AdminPage(){
  return <section className="container-page py-10">
   <div className="flex flex-wrap items-center justify-between gap-4">
    <div><p className="font-semibold text-brand-700">Admin general</p><h1 className="text-4xl font-black">Centro de control</h1><p className="mt-2 max-w-3xl text-slate-600">Roles, seguridad, productores, RRPP, links propios, cargos de servicio, acreditación y reportes operativos en una sola consola.</p></div>
-   <div className="flex flex-wrap gap-2"><Link href="/admin/eventos/nuevo" className="btn-primary">Crear evento</Link><Link href="/login" className="btn-secondary">Probar login</Link></div>
+   <div className="flex flex-wrap gap-2"><Link href="/admin/eventos/nuevo" className="btn-primary">Crear evento</Link><Link href="/admin/usuarios" className="btn-secondary">Crear usuario</Link><Link href="/login" className="btn-secondary">Probar login</Link></div>
   </div>
 
   <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-5"><Stats label="Eventos demo" value={stats.events}/><Stats label="Ventas reales demo" value={totals.tickets}/><Stats label="Recaudación" value={formatMoney(totals.gross)}/><Stats label="Service charges" value={formatMoney(totals.serviceFees)}/><Stats label="Acreditados" value={checkins}/></div>
@@ -25,6 +25,7 @@ export default function AdminPage(){
 
   <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
    {[
+    ['/admin/usuarios','Usuarios','Alta web de productores, RRPP, acreditadores y compradores.',UserPlus],
     ['/admin/roles','Roles y seguridad','Permisos por admin, productor, RRPP, acreditador y comprador.',ShieldCheck],
     ['/admin/productores','Productores','Gestión de organizadores, eventos propios y permisos.',Users],
     ['/admin/rrpp','RRPP y links','Links trackeables, comisiones y ventas por promotor.',Link2],
