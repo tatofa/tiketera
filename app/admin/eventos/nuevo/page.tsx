@@ -8,15 +8,15 @@ import { Event } from '@/lib/types';
 
 const slugify=(s:string)=>s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');
 type DraftTicket={id:string; name:string; price:number; capacity:number; maxPerOrder:number; status:'active'|'paused'};
-const emptyTicket=():DraftTicket=>({id:`draft_${uuid()}`,name:'General',price:0,capacity:100,maxPerOrder:6,status:'active'});
+const emptyTicket=():DraftTicket=>({id:uuid(),name:'General',price:0,capacity:100,maxPerOrder:6,status:'active'});
 
 export default function NewEventPage(){
  const router=useRouter();
  const [form,setForm]=useState({name:'',venue:'',description:'',imageUrl:'',capacity:500,status:'draft' as Event['status'],start:'',end:'',slug:''});
  const [tickets,setTickets]=useState<DraftTicket[]>([emptyTicket()]);
  function save(){
-  const id=`evt_${uuid()}`;
-  const sectorId=`sec_${uuid()}`;
+  const id=uuid();
+  const sectorId=uuid();
   const start=form.start?new Date(form.start).toISOString():new Date(Date.now()+7*86400000).toISOString();
   const end=form.end?new Date(form.end).toISOString():undefined;
   const cleanName=form.name.trim()||'Evento sin nombre';
@@ -30,9 +30,9 @@ export default function NewEventPage(){
    imageUrl:form.imageUrl.trim(),
    status:form.status,
    capacity:Number(form.capacity)||0,
-   dates:[{id:`date_${uuid()}`,eventId:id,start,end,status:'active'}],
+   dates:[{id:uuid(),eventId:id,start,end,status:'active'}],
    sectors:[{id:sectorId,eventId:id,name:'General',capacity:Number(form.capacity)||0}],
-   ticketTypes:tickets.map(ticket=>({id:`tt_${uuid()}`,eventId:id,sectorId,name:ticket.name||'General',price:Number(ticket.price)||0,currency:'ARS',saleStart:new Date().toISOString(),saleEnd:start,maxPerOrder:Number(ticket.maxPerOrder)||1,status:ticket.status}))
+   ticketTypes:tickets.map(ticket=>({id:uuid(),eventId:id,sectorId,name:ticket.name||'General',price:Number(ticket.price)||0,currency:'ARS',saleStart:new Date().toISOString(),saleEnd:start,maxPerOrder:Number(ticket.maxPerOrder)||1,status:ticket.status}))
   };
   Store.saveEvents([e,...Store.events()]);
   router.push(`/admin/eventos/${id}`);
