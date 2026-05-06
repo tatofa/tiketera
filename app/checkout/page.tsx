@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { CreditCard, ShieldCheck, Ticket } from 'lucide-react';
-import { Store } from '@/lib/store';
+import { loadEventsFromSupabase } from '@/lib/supabase-events';
 import { createBrowserSupabaseClient } from '@/lib/supabase';
 import type { Event } from '@/lib/types';
 
@@ -24,22 +24,31 @@ function CheckoutContent() {
   const [events, setEvents] = useState<Event[]>([]);
   const [buyer, setBuyer] = useState({ name: '', email: '' });
   const [feeConfig, setFeeConfig] = useState<FeeConfig>({ mode: 'percent', value: 12, currency: 'ARS' });
+  const [loading, setLoading] = useState(true);
+  const [paying, setPaying] = useState(false);
+  const [error, setError] = useState('');
   const qty = Math.max(1, Number(params.get('qty') ?? params.get('quantity') ?? 1));
 
   useEffect(() => {
-    setEvents(Store.events());
     async function load() {
+      const eventResult = await loadEventsFromSupabase({ publicOnly: true });
+      setEvents(eventResult.events);
+      if (!eventResult.ok) setError(eventResult.error ?? 'No se pudieron cargar eventos.');
+
       const feeRes = await fetch('/api/service-fee');
       const feeJson = await feeRes.json().catch(() => ({}));
       if (feeJson.fee) setFeeConfig(feeJson.fee);
 
       const supabase = createBrowserSupabaseClient();
-      if (!supabase) return;
-      const { data } = await supabase.auth.getSession();
-      const user = data.session?.user;
-      if (!user) return;
-      const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', user.id).maybeSingle();
-      setBuyer({ name: profile?.full_name || user.user_metadata?.full_name || '', email: user.email || '' });
+      if (supabase) {
+        const { data } = await supabase.auth.getSession();
+        const user = data.session?.user;
+        if (user) {
+          const { data: profile } = await supabase.from('profiles').select('full_name').eq('id', user.id).maybeSingle();
+          setBuyer({ name: profile?.full_name || user.user_metadata?.full_name || '', email: user.email || '' });
+        }
+      }
+      setLoading(false);
     }
     load();
   }, []);
@@ -47,28 +56,55 @@ function CheckoutContent() {
   const selected = useMemo(() => {
     const eventParam = params.get('event') ?? params.get('eventId') ?? params.get('slug');
     const ticketParam = params.get('ticket') ?? params.get('ticketTypeId') ?? params.get('type');
+    const dateParam = params.get('eventDateId') ?? params.get('date');
     const event = events.find((item) => item.id === eventParam || item.slug === eventParam) ?? events.find((item) => item.status === 'published') ?? events[0];
     const ticketType = event?.ticketTypes.find((ticket) => ticket.id === ticketParam || ticket.name.toLowerCase() === String(ticketParam ?? '').toLowerCase()) ?? event?.ticketTypes[0];
-    return { event, ticketType };
+    const eventDate = event?.dates.find((date) => date.id === dateParam) ?? event?.dates[0];
+    return { event, ticketType, eventDate };
   }, [events, params]);
 
-  if (!selected.event || !selected.ticketType) {
-    return <section className="container-page py-12"><div className="card p-8"><h1 className="text-3xl font-black text-white">Checkout</h1><p className="mt-2 text-white/65">No encontramos entradas seleccionadas.</p><Link href="/eventos" className="btn-primary mt-6">Volver a eventos</Link></div></section>;
+  if (loading) {
+    return <section className="container-page py-12"><div className="card p-8 text-white/70">Cargando checkout real desde Supabase...</div></section>;
+  }
+
+  if (!selected.event || !selected.ticketType || !selected.eventDate) {
+    return <section className="container-page py-12"><div className="card p-8"><h1 className="text-3xl font-black text-white">Checkout</h1>{error&&<p className="mt-2 text-red-200">{error}</p>}<p className="mt-2 text-white/65">No encontramos entradas seleccionadas.</p><Link href="/eventos" className="btn-primary mt-6">Volver a eventos</Link></div></section>;
   }
 
   const subtotal = selected.ticketType.price * qty;
   const serviceFee = calcServiceFee(subtotal, feeConfig);
   const total = subtotal + serviceFee;
-  const orderId = `ord_${Date.now()}`;
 
-  function pay() {
-    router.push(`/checkout/exito?order=${orderId}`);
+  async function pay() {
+    setPaying(true);
+    setError('');
+    const res = await fetch('/api/checkout/create-order', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        eventId: selected.event!.id,
+        eventDateId: selected.eventDate!.id,
+        ticketTypeId: selected.ticketType!.id,
+        quantity: qty,
+        buyerName: buyer.name,
+        buyerEmail: buyer.email,
+        channel: 'web'
+      })
+    });
+    const json = await res.json().catch(() => ({}));
+    setPaying(false);
+    if (!res.ok) {
+      setError(json.error ?? 'No se pudo crear la orden.');
+      return;
+    }
+    router.push(`/checkout/exito?order=${json.orderId}`);
   }
 
   return (
     <section className="container-page py-12">
       <h1 className="text-5xl font-black text-white">Checkout</h1>
-      <p className="mt-2 text-white/65">Revisá el detalle antes de pagar.</p>
+      <p className="mt-2 text-white/65">Revisá el detalle antes de confirmar la orden.</p>
+      {error&&<div className="mt-6 rounded-2xl border border-red-300/30 bg-red-950/40 p-4 text-sm text-red-100">{error}</div>}
       <div className="mt-10 grid gap-8 lg:grid-cols-[1.35fr_.75fr]">
         <div className="card p-7">
           <h2 className="text-2xl font-black text-white">Datos del comprador</h2>
@@ -77,9 +113,9 @@ function CheckoutContent() {
             <label><span className="label">Email</span><input className="input mt-1" value={buyer.email} onChange={(e) => setBuyer({ ...buyer, email: e.target.value })} placeholder="email@dominio.com" /></label>
           </div>
           <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-5">
-            <div className="flex items-start gap-3"><ShieldCheck className="mt-1 text-red-200"/><div><p className="font-black text-white">Pago seguro</p><p className="mt-1 text-sm text-white/65">El pago real se conecta con Mercado Pago, Stripe u otro proveedor.</p></div></div>
+            <div className="flex items-start gap-3"><ShieldCheck className="mt-1 text-red-200"/><div><p className="font-black text-white">Orden real</p><p className="mt-1 text-sm text-white/65">Este flujo crea orden, item y tickets reales en Supabase. El proveedor de pago queda para conectar después.</p></div></div>
           </div>
-          <button onClick={pay} className="btn-primary mt-6 w-full"><CreditCard size={18} className="mr-2"/>Pagar {ars(total)}</button>
+          <button onClick={pay} disabled={paying || !buyer.name || !buyer.email} className="btn-primary mt-6 w-full"><CreditCard size={18} className="mr-2"/>{paying ? 'Confirmando...' : `Confirmar orden ${ars(total)}`}</button>
         </div>
 
         <aside className="card p-7">
