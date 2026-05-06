@@ -94,9 +94,10 @@ export async function POST(request: Request) {
     channel
   };
 
-  let orderInsert = await supabase.from('orders').insert(promoterLinkId ? { ...baseOrder, promoter_link_id: promoterLinkId } : baseOrder).select('id').single();
+  const orderPayload: Record<string, unknown> = promoterLinkId ? { ...baseOrder, promoter_link_id: promoterLinkId } : baseOrder;
+  let orderInsert = await supabase.from('orders').insert(orderPayload as any).select('id').single();
   if (orderInsert.error && promoterLinkId && orderInsert.error.message.toLowerCase().includes('promoter')) {
-    orderInsert = await supabase.from('orders').insert(baseOrder).select('id').single();
+    orderInsert = await supabase.from('orders').insert(baseOrder as any).select('id').single();
   }
 
   const order = orderInsert.data;
