@@ -3,6 +3,7 @@ import { createBrowserSupabaseClient } from './supabase';
 import type { Event } from './types';
 
 export type DbMutationResult = { ok: boolean; skipped: boolean; error: string | null };
+export type LoadEventsOptions = { publicOnly?: boolean };
 
 function normalizeTicketTypeStatus(status: string) {
   return status === 'active' || status === 'sold_out' ? status : 'paused';
@@ -114,14 +115,23 @@ export async function saveEventToSupabase(event: Event): Promise<DbMutationResul
   return { ok: true, skipped: false, error: null };
 }
 
-export async function loadEventsFromSupabase() {
-  const { supabase, userId } = await getSupabaseSession();
-  if (!supabase || !userId) return { ok: false, events: [] as Event[], error: 'Sin sesión Supabase' };
+export async function loadEventsFromSupabase(options: LoadEventsOptions = {}) {
+  const supabase = createBrowserSupabaseClient();
+  if (!supabase) return { ok: false, events: [] as Event[], error: 'Falta configurar Supabase' };
 
-  const { data: events, error: eventsError } = await supabase
+  if (!options.publicOnly) {
+    const { data } = await supabase.auth.getSession();
+    if (!data.session?.user?.id) return { ok: false, events: [] as Event[], error: 'Sin sesión Supabase' };
+  }
+
+  let query = supabase
     .from('events')
     .select('id,producer_id,name,slug,description,image_url,status,capacity,venue_id,venues(name)')
     .order('created_at', { ascending: false });
+
+  if (options.publicOnly) query = query.eq('status', 'published');
+
+  const { data: events, error: eventsError } = await query;
 
   if (eventsError) return { ok: false, events: [] as Event[], error: eventsError.message };
   const ids = (events ?? []).map((event: any) => event.id);
