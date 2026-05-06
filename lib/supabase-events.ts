@@ -8,16 +8,17 @@ function normalizeTicketTypeStatus(status: string) {
   return status === 'active' || status === 'sold_out' ? status : 'paused';
 }
 
-function toDbEvent(event: Event, userId?: string) {
+function toDbEvent(event: Event, userId: string, producerId: string) {
   return {
     id: event.id,
+    producer_id: producerId,
     name: event.name,
     slug: event.slug,
     description: event.description,
     image_url: event.imageUrl,
     status: event.status,
     capacity: event.capacity,
-    created_by: userId ?? null
+    created_by: userId
   };
 }
 
@@ -63,11 +64,36 @@ export async function getSupabaseSession() {
   return { supabase, userId: session?.user?.id ?? null, token: session?.access_token ?? null };
 }
 
+async function resolveProducerId(supabase: NonNullable<ReturnType<typeof createBrowserSupabaseClient>>, userId: string) {
+  const { data: member } = await supabase
+    .from('producer_members')
+    .select('producer_id')
+    .eq('profile_id', userId)
+    .limit(1)
+    .maybeSingle();
+
+  if (member?.producer_id) return member.producer_id as string;
+
+  const { data: owned } = await supabase
+    .from('producers')
+    .select('id')
+    .eq('owner_profile_id', userId)
+    .limit(1)
+    .maybeSingle();
+
+  if (owned?.id) return owned.id as string;
+
+  return null;
+}
+
 export async function saveEventToSupabase(event: Event): Promise<DbMutationResult> {
   const { supabase, userId } = await getSupabaseSession();
   if (!supabase || !userId) return { ok: false, skipped: true, error: 'Sin sesión Supabase' };
 
-  const { error: eventError } = await supabase.from('events').upsert(toDbEvent(event, userId), { onConflict: 'id' });
+  const producerId = await resolveProducerId(supabase, userId);
+  if (!producerId) return { ok: false, skipped: false, error: 'El usuario no tiene productor asociado. Creá un producer y un producer_member para este perfil.' };
+
+  const { error: eventError } = await supabase.from('events').upsert(toDbEvent(event, userId, producerId), { onConflict: 'id' });
   if (eventError) return { ok: false, skipped: false, error: eventError.message };
 
   if (event.dates.length) {
@@ -94,7 +120,7 @@ export async function loadEventsFromSupabase() {
 
   const { data: events, error: eventsError } = await supabase
     .from('events')
-    .select('id,name,slug,description,image_url,status,capacity,venue_id,venues(name)')
+    .select('id,producer_id,name,slug,description,image_url,status,capacity,venue_id,venues(name)')
     .order('created_at', { ascending: false });
 
   if (eventsError) return { ok: false, events: [] as Event[], error: eventsError.message };
@@ -190,8 +216,17 @@ export async function createCourtesyTicketsInSupabase(input: {
   const { supabase, userId } = await getSupabaseSession();
   if (!supabase || !userId) return { ok: false, skipped: true, error: 'Sin sesión Supabase' };
 
+  const { data: eventRow, error: eventError } = await supabase
+    .from('events')
+    .select('producer_id')
+    .eq('id', input.eventId)
+    .single();
+
+  if (eventError) return { ok: false, skipped: false, error: eventError.message };
+
   const { data: order, error: orderError } = await supabase.from('orders').insert({
     user_id: userId,
+    producer_id: eventRow.producer_id,
     buyer_name: input.holderName || input.holderEmail,
     buyer_email: input.holderEmail,
     status: 'paid',
@@ -206,7 +241,7 @@ export async function createCourtesyTicketsInSupabase(input: {
   if (orderError) return { ok: false, skipped: false, error: orderError.message };
 
   const rows = Array.from({ length: Math.max(1, input.quantity) }).map(() => ({
-    id: `tkt_${uuid()}`,
+    id: uuid(),
     order_id: order.id,
     event_id: input.eventId,
     event_date_id: input.eventDateId,
