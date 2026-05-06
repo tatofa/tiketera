@@ -6,20 +6,22 @@ import { ShoppingCart } from 'lucide-react';
 import { Event } from '@/lib/types';
 import { dateTime, money } from '@/lib/format';
 
-export default function TicketSelector({ event }: { event: Event }) {
+export default function TicketSelector({ event, rrppCode = '' }: { event: Event; rrppCode?: string }) {
   const activeTypes = useMemo(() => event.ticketTypes.filter((ticket) => ticket.status === 'active'), [event.ticketTypes]);
   const [eventDateId, setEventDateId] = useState(event.dates[0]?.id || '');
   const [ticketTypeId, setTicketTypeId] = useState(activeTypes[0]?.id || event.ticketTypes[0]?.id || '');
   const [quantity, setQuantity] = useState(1);
   const selectedType = event.ticketTypes.find((t) => t.id === ticketTypeId);
   const max = selectedType?.maxPerOrder || 8;
+  const rrppParam = rrppCode ? `&rrpp=${encodeURIComponent(rrppCode)}` : '';
   const checkoutHref = selectedType && eventDateId
-    ? `/checkout?eventId=${event.id}&eventDateId=${eventDateId}&ticketTypeId=${selectedType.id}&qty=${quantity}`
+    ? `/checkout?eventId=${event.id}&eventDateId=${eventDateId}&ticketTypeId=${selectedType.id}&qty=${quantity}${rrppParam}`
     : '/eventos';
 
   return (
     <div className="card sticky top-24 p-5">
       <h2 className="text-xl font-black text-white">Comprar entradas</h2>
+      {rrppCode && <p className="mt-2 rounded-2xl bg-red-950/35 px-3 py-2 text-sm font-bold text-red-100">Compra atribuida a RRPP: /{rrppCode}</p>}
       <div className="mt-5 space-y-4">
         <div>
           <label className="label">Función</label>
