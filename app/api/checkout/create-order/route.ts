@@ -23,7 +23,8 @@ export async function POST(request: Request) {
   const buyerName = String(body?.buyerName ?? '').trim();
   const buyerEmail = String(body?.buyerEmail ?? '').trim().toLowerCase();
   const quantity = Math.max(1, Number(body?.quantity ?? 1));
-  const channel = ['web', 'rrpp', 'door', 'box_office'].includes(body?.channel) ? body.channel : 'web';
+  const rrppCode = String(body?.rrppCode ?? '').trim().toLowerCase();
+  const channel = rrppCode ? 'rrpp' : (['web', 'rrpp', 'door', 'box_office'].includes(body?.channel) ? body.channel : 'web');
 
   if (!eventId || !eventDateId || !ticketTypeId || !buyerName || !buyerEmail) {
     return NextResponse.json({ error: 'Faltan datos para crear la orden.' }, { status: 400 });
@@ -55,6 +56,18 @@ export async function POST(request: Request) {
   if (dateError || !eventDate) return NextResponse.json({ error: dateError?.message ?? 'Función no encontrada.' }, { status: 404 });
   if (eventDate.status !== 'active') return NextResponse.json({ error: 'La función no está activa.' }, { status: 400 });
 
+  let promoterLinkId: string | null = null;
+  if (rrppCode) {
+    const { data: link } = await supabase
+      .from('promoter_links')
+      .select('id,event_id,active')
+      .eq('code', rrppCode)
+      .eq('event_id', eventId)
+      .eq('active', true)
+      .maybeSingle();
+    promoterLinkId = link?.id ?? null;
+  }
+
   const { data: feeRule } = await supabase
     .from('service_fee_rules')
     .select('percentage,fixed_amount,min_fee,max_fee,currency')
@@ -68,7 +81,7 @@ export async function POST(request: Request) {
   const serviceFee = calcFee(subtotal, feeRule ?? { percentage: 0, fixed_amount: 0, min_fee: 0, max_fee: null });
   const total = subtotal + serviceFee;
 
-  const { data: order, error: orderError } = await supabase.from('orders').insert({
+  const baseOrder = {
     producer_id: event.producer_id,
     buyer_name: buyerName,
     buyer_email: buyerEmail,
@@ -79,9 +92,15 @@ export async function POST(request: Request) {
     total_amount: total,
     currency: ticketType.currency ?? 'ARS',
     channel
-  }).select('id').single();
+  };
 
-  if (orderError || !order) return NextResponse.json({ error: orderError?.message ?? 'No se pudo crear la orden.' }, { status: 400 });
+  let orderInsert = await supabase.from('orders').insert(promoterLinkId ? { ...baseOrder, promoter_link_id: promoterLinkId } : baseOrder).select('id').single();
+  if (orderInsert.error && promoterLinkId && orderInsert.error.message.toLowerCase().includes('promoter')) {
+    orderInsert = await supabase.from('orders').insert(baseOrder).select('id').single();
+  }
+
+  const order = orderInsert.data;
+  if (orderInsert.error || !order) return NextResponse.json({ error: orderInsert.error?.message ?? 'No se pudo crear la orden.' }, { status: 400 });
 
   const { error: itemError } = await supabase.from('order_items').insert({
     order_id: order.id,
