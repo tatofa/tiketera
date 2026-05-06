@@ -1,27 +1,25 @@
 'use client';
 
-import { useState } from 'react';
+import Link from 'next/link';
+import { useMemo, useState } from 'react';
 import { ShoppingCart } from 'lucide-react';
-import { toast } from 'sonner';
-import { addToCart } from '@/lib/store';
 import { Event } from '@/lib/types';
 import { dateTime, money } from '@/lib/format';
 
 export default function TicketSelector({ event }: { event: Event }) {
+  const activeTypes = useMemo(() => event.ticketTypes.filter((ticket) => ticket.status === 'active'), [event.ticketTypes]);
   const [eventDateId, setEventDateId] = useState(event.dates[0]?.id || '');
-  const [ticketTypeId, setTicketTypeId] = useState(event.ticketTypes[0]?.id || '');
+  const [ticketTypeId, setTicketTypeId] = useState(activeTypes[0]?.id || event.ticketTypes[0]?.id || '');
   const [quantity, setQuantity] = useState(1);
   const selectedType = event.ticketTypes.find((t) => t.id === ticketTypeId);
-
-  function onAdd() {
-    if (!selectedType || !eventDateId) return;
-    addToCart({ eventId: event.id, eventDateId, ticketTypeId, quantity });
-    toast.success('Entradas agregadas al carrito');
-  }
+  const max = selectedType?.maxPerOrder || 8;
+  const checkoutHref = selectedType && eventDateId
+    ? `/checkout?eventId=${event.id}&eventDateId=${eventDateId}&ticketTypeId=${selectedType.id}&qty=${quantity}`
+    : '/eventos';
 
   return (
-    <div className="card p-5 sticky top-24">
-      <h2 className="text-xl font-black">Comprar entradas</h2>
+    <div className="card sticky top-24 p-5">
+      <h2 className="text-xl font-black text-white">Comprar entradas</h2>
       <div className="mt-5 space-y-4">
         <div>
           <label className="label">Función</label>
@@ -32,19 +30,18 @@ export default function TicketSelector({ event }: { event: Event }) {
         <div>
           <label className="label">Tipo de entrada</label>
           <select className="input mt-1" value={ticketTypeId} onChange={(e) => setTicketTypeId(e.target.value)}>
-            {event.ticketTypes.map((t) => <option key={t.id} value={t.id}>{t.name} — {money(t.price, t.currency)}</option>)}
+            {activeTypes.map((t) => <option key={t.id} value={t.id}>{t.name} — {money(t.price, t.currency)}</option>)}
           </select>
         </div>
         <div>
           <label className="label">Cantidad</label>
-          <input className="input mt-1" type="number" min={1} max={selectedType?.maxPerOrder || 8} value={quantity} onChange={(e) => setQuantity(Number(e.target.value))} />
+          <input className="input mt-1" type="number" min={1} max={max} value={quantity} onChange={(e) => setQuantity(Math.max(1, Math.min(max, Number(e.target.value) || 1)))} />
         </div>
-        <div className="rounded-2xl bg-slate-50 p-4">
-          <div className="flex justify-between text-sm"><span>Total</span><b>{money((selectedType?.price || 0) * quantity, selectedType?.currency)}</b></div>
-          <p className="mt-2 text-xs text-slate-500">La reserva del carrito debería vencer en 10 minutos en modo producción.</p>
+        <div className="rounded-2xl bg-white/5 p-4">
+          <div className="flex justify-between text-sm text-white/70"><span>Entrada</span><b className="text-white">{money((selectedType?.price || 0) * quantity, selectedType?.currency)}</b></div>
+          <p className="mt-2 text-xs text-white/45">El cargo de servicio se calcula en el checkout con la regla global vigente.</p>
         </div>
-        <button className="btn-primary w-full gap-2" onClick={onAdd}><ShoppingCart size={18} /> Agregar al carrito</button>
-        <a href="/checkout" className="btn-secondary w-full">Ir al checkout</a>
+        {selectedType && eventDateId ? <Link className="btn-primary w-full gap-2" href={checkoutHref}><ShoppingCart size={18} /> Ir al checkout</Link> : <button className="btn-secondary w-full" disabled>Sin entradas disponibles</button>}
       </div>
     </div>
   );
