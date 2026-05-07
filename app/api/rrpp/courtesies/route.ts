@@ -1,37 +1,53 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-function getClients(request: Request) {
+type ClientCheck =
+  | { ok: true; userClient: SupabaseClient; adminClient: SupabaseClient }
+  | { ok: false; error: string; status: number };
+
+type OperationalCheck =
+  | {
+      ok: true;
+      adminClient: SupabaseClient;
+      user: { id: string };
+      isPlatformAdmin: boolean;
+      isProducer: boolean;
+      isRrpp: boolean;
+      producerIds: string[];
+    }
+  | { ok: false; error: string; status: number };
+
+function getClients(request: Request): ClientCheck {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const token = (request.headers.get('authorization') ?? '').replace('Bearer ', '').trim();
-  if (!supabaseUrl || !anonKey || !serviceRoleKey) return { error: 'Faltan variables de Supabase.', status: 500 } as const;
-  if (!token) return { error: 'No autenticado.', status: 401 } as const;
+  if (!supabaseUrl || !anonKey || !serviceRoleKey) return { ok: false, error: 'Faltan variables de Supabase.', status: 500 };
+  if (!token) return { ok: false, error: 'No autenticado.', status: 401 };
   const userClient = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: `Bearer ${token}` } } });
   const adminClient = createClient(supabaseUrl, serviceRoleKey, { auth: { autoRefreshToken: false, persistSession: false } });
-  return { userClient, adminClient } as const;
+  return { ok: true, userClient, adminClient };
 }
 
-async function requireOperational(request: Request) {
+async function requireOperational(request: Request): Promise<OperationalCheck> {
   const clients = getClients(request);
-  if ('error' in clients) return clients;
+  if (!clients.ok) return clients;
   const { userClient, adminClient } = clients;
   const { data: userData, error: userError } = await userClient.auth.getUser();
   const user = userData.user;
-  if (userError || !user) return { error: 'Sesión inválida.', status: 401 } as const;
+  if (userError || !user) return { ok: false, error: 'Sesión inválida.', status: 401 };
   const { data: profile } = await adminClient.from('profiles').select('role,active').eq('id', user.id).maybeSingle();
   const { data: memberships } = await adminClient.from('producer_members').select('producer_id,role').eq('profile_id', user.id);
   const isPlatformAdmin = ['super_admin', 'admin'].includes(profile?.role ?? '');
   const isProducer = profile?.role === 'producer' || (memberships ?? []).some((m: any) => m.role === 'owner' || m.role === 'producer');
   const isRrpp = (memberships ?? []).some((m: any) => m.role === 'rrpp');
-  if (!profile?.active || (!isPlatformAdmin && !isProducer && !isRrpp)) return { error: 'Sin permisos para cortesías RRPP.', status: 403 } as const;
-  return { adminClient, user, isPlatformAdmin, isProducer, isRrpp, producerIds: (memberships ?? []).map((m: any) => m.producer_id) } as const;
+  if (!profile?.active || (!isPlatformAdmin && !isProducer && !isRrpp)) return { ok: false, error: 'Sin permisos para cortesías RRPP.', status: 403 };
+  return { ok: true, adminClient, user: { id: user.id }, isPlatformAdmin, isProducer, isRrpp, producerIds: (memberships ?? []).map((m: any) => m.producer_id) };
 }
 
 export async function GET(request: Request) {
   const checked = await requireOperational(request);
-  if ('error' in checked) return NextResponse.json({ error: checked.error }, { status: checked.status });
+  if (!checked.ok) return NextResponse.json({ error: checked.error }, { status: checked.status });
   const { adminClient } = checked;
 
   const { data: allowances, error } = await adminClient
@@ -70,7 +86,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const checked = await requireOperational(request);
-  if ('error' in checked) return NextResponse.json({ error: checked.error }, { status: checked.status });
+  if (!checked.ok) return NextResponse.json({ error: checked.error }, { status: checked.status });
   const { adminClient, user } = checked;
   const body = await request.json().catch(() => null);
   const allowanceId = String(body?.allowanceId ?? '').trim();
