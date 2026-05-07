@@ -13,6 +13,13 @@ type Props = {
   description?: string;
 };
 
+function normalizeMemberRole(role: string): Role {
+  if (role === 'owner' || role === 'producer') return 'producer';
+  if (role === 'rrpp') return 'rrpp';
+  if (role === 'accreditor') return 'accreditor';
+  return 'buyer';
+}
+
 export default function AuthGate({ children, allow, title = 'Necesitás iniciar sesión', description = 'Registrate o ingresá con tu cuenta para continuar.' }: Props) {
   const [loading, setLoading] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
@@ -42,13 +49,12 @@ export default function AuthGate({ children, allow, title = 'Necesitás iniciar 
       const { data: profile } = await supabase.from('profiles').select('role, active').eq('id', user.id).maybeSingle();
       if (profile?.active && profile.role) roleSet.add(profile.role as Role);
 
-      const { data: assignedRoles } = await supabase
-        .from('user_role_assignments')
-        .select('role, active')
-        .eq('profile_id', user.id)
-        .eq('active', true);
+      const { data: memberships } = await supabase
+        .from('producer_members')
+        .select('role')
+        .eq('profile_id', user.id);
 
-      assignedRoles?.forEach((row: any) => roleSet.add(row.role as Role));
+      memberships?.forEach((row: any) => roleSet.add(normalizeMemberRole(row.role)));
       setRoles(Array.from(roleSet));
       setLoading(false);
     }
