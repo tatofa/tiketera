@@ -16,8 +16,7 @@ async function requireSuperAdmin(request: Request) {
   if (userError || !userData.user) return { error: 'Sesión inválida.', status: 401 } as const;
 
   const { data: profile } = await adminClient.from('profiles').select('role, active').eq('id', userData.user.id).maybeSingle();
-  const { data: roles } = await adminClient.from('user_role_assignments').select('role, active').eq('profile_id', userData.user.id).eq('active', true);
-  const isSuperAdmin = Boolean((profile?.active && profile.role === 'super_admin') || (roles ?? []).some((row: any) => row.role === 'super_admin'));
+  const isSuperAdmin = Boolean(profile?.active && profile.role === 'super_admin');
   if (!isSuperAdmin) return { error: 'Solo super admin puede modificar el cargo de servicio.', status: 403 } as const;
   return { adminClient } as const;
 }
@@ -42,7 +41,6 @@ export async function GET(request: Request) {
     .from('service_fee_rules')
     .select('*')
     .eq('active', true)
-    .order('channel', { ascending: false })
     .order('created_at', { ascending: true })
     .limit(1);
 
@@ -67,22 +65,33 @@ export async function PATCH(request: Request) {
     .from('service_fee_rules')
     .select('id')
     .eq('active', true)
-    .order('channel', { ascending: false })
     .order('created_at', { ascending: true })
     .limit(1);
+
+  const payload = {
+    name: 'Cargo de servicio',
+    channel: 'web',
+    percentage,
+    fixed_amount,
+    min_fee: 0,
+    max_fee: null,
+    buyer_pays_fee: true,
+    active: true,
+    currency: 'ARS'
+  };
 
   let result;
   if (existing?.length) {
     result = await checked.adminClient
       .from('service_fee_rules')
-      .update({ name: 'Cargo de servicio', channel: 'global', percentage, fixed_amount, min_fee: 0, max_fee: null, buyer_pays_fee: true, active: true })
+      .update(payload)
       .eq('id', existing[0].id)
       .select('*')
       .single();
   } else {
     result = await checked.adminClient
       .from('service_fee_rules')
-      .insert({ name: 'Cargo de servicio', channel: 'global', percentage, fixed_amount, min_fee: 0, max_fee: null, buyer_pays_fee: true, active: true, currency: 'ARS' })
+      .insert(payload)
       .select('*')
       .single();
   }
