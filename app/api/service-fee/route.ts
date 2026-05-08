@@ -4,16 +4,19 @@ import { createClient } from '@supabase/supabase-js';
 const fallback = {
   mode: 'percent',
   value: 12,
+  minFee: 0,
+  maxFee: null,
   currency: 'ARS'
 };
 
 function normalize(rule: any) {
   const percentage = Number(rule?.percentage ?? 0);
   const fixed = Number(rule?.fixed_amount ?? 0);
-  if (percentage > 0) {
-    return { mode: 'percent', value: percentage, currency: rule?.currency ?? 'ARS' };
-  }
-  return { mode: 'fixed', value: fixed, currency: rule?.currency ?? 'ARS' };
+  const minFee = Number(rule?.min_fee ?? 0);
+  const maxFee = rule?.max_fee == null ? null : Number(rule.max_fee);
+  const common = { minFee, maxFee, currency: rule?.currency ?? 'ARS' };
+  if (percentage > 0) return { mode: 'percent', value: percentage, ...common };
+  return { mode: 'fixed', value: fixed, ...common };
 }
 
 export async function GET() {
@@ -30,15 +33,12 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from('service_fee_rules')
-    .select('percentage,fixed_amount,currency,active,channel,created_at')
+    .select('percentage,fixed_amount,min_fee,max_fee,currency,active,channel,created_at')
     .eq('active', true)
-    .order('channel', { ascending: false })
-    .order('created_at', { ascending: true })
+    .eq('channel', 'web')
+    .order('created_at', { ascending: false })
     .limit(1);
 
-  if (error || !data?.length) {
-    return NextResponse.json({ fee: fallback });
-  }
-
+  if (error || !data?.length) return NextResponse.json({ fee: fallback });
   return NextResponse.json({ fee: normalize(data[0]) });
 }

@@ -2,6 +2,7 @@
 
 import { v4 as uuid } from 'uuid';
 import { demoEvents } from './demo-data';
+import { saveEventToSupabase } from './supabase-events';
 import type { CartItem, Event, Order, Ticket } from './types';
 
 const K_EVENTS = 'ticketera.events';
@@ -22,6 +23,15 @@ function write<T>(key: string, value: T) {
   window.dispatchEvent(new globalThis.Event('ticketera-storage'));
 }
 
+function syncEventsToSupabase(events: Event[]) {
+  if (typeof window === 'undefined') return;
+  events.forEach((event) => {
+    saveEventToSupabase(event).then((result) => {
+      if (!result.ok && !result.skipped) console.error('No se pudo sincronizar evento con Supabase:', result.error);
+    });
+  });
+}
+
 export function seedDemo() {
   if (typeof window === 'undefined') return;
   if (!localStorage.getItem(K_EVENTS)) write(K_EVENTS, demoEvents);
@@ -39,7 +49,7 @@ export function resetDemo() {
 
 export const Store = {
   events: () => read<Event[]>(K_EVENTS, demoEvents),
-  saveEvents: (events: Event[]) => write(K_EVENTS, events),
+  saveEvents: (events: Event[]) => { write(K_EVENTS, events); syncEventsToSupabase(events); },
   cart: () => read<CartItem[]>(K_CART, []),
   saveCart: (cart: CartItem[]) => write(K_CART, cart),
   orders: () => read<Order[]>(K_ORDERS, []),
