@@ -134,9 +134,13 @@ export async function loadEventsFromSupabase(options: LoadEventsOptions = {}) {
     if (!data.session?.user?.id) return { ok: false, events: [] as Event[], error: 'Sin sesión Supabase' };
   }
 
+  const eventSelect = options.publicOnly
+    ? 'id,producer_id,name,slug,description,status,capacity,venue_id,venues(name)'
+    : 'id,producer_id,name,slug,description,image_url,status,capacity,venue_id,venues(name)';
+
   let query = supabase
     .from('events')
-    .select('id,producer_id,name,slug,description,image_url,status,capacity,venue_id,venues(name)')
+    .select(eventSelect)
     .order('created_at', { ascending: false });
 
   if (options.publicOnly) query = query.eq('status', 'published');
@@ -158,7 +162,7 @@ export async function loadEventsFromSupabase(options: LoadEventsOptions = {}) {
     name: event.name,
     slug: event.slug,
     description: event.description ?? '',
-    imageUrl: event.image_url ?? '',
+    imageUrl: options.publicOnly ? '' : event.image_url ?? '',
     venue: event.venues?.name ?? '',
     status: event.status,
     capacity: event.capacity ?? 0,
