@@ -1,5 +1,3 @@
-'use client';
-
 import Image from 'next/image';
 import { CalendarDays, MapPin } from 'lucide-react';
 import { Event } from '@/lib/types';
@@ -18,13 +16,8 @@ export default function EventCard({ event }: { event: Event }) {
   const firstDate = event.dates[0]?.start;
   const href = eventPublicPath(event);
 
-  function openEvent(e: React.MouseEvent<HTMLAnchorElement>) {
-    e.preventDefault();
-    window.location.assign(href);
-  }
-
   return (
-    <a href={href} onClick={openEvent} className="group block cursor-pointer overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-white/8 via-black/80 to-black shadow-xl shadow-black/50 transition-all hover:-translate-y-1 hover:border-white/25 hover:shadow-red-950/30">
+    <a href={href} className="group block cursor-pointer overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-white/8 via-black/80 to-black shadow-xl shadow-black/50 transition-all hover:-translate-y-1 hover:border-white/25 hover:shadow-red-950/30">
       <div className="relative h-52 overflow-hidden">
         <Image src={event.imageUrl || fallbackImage} alt={event.name} fill className="object-cover transition-transform duration-500 group-hover:scale-105" />
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent" />
