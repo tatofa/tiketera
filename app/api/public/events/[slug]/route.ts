@@ -7,6 +7,14 @@ type RouteContext = {
   params: Promise<{ slug: string }>;
 };
 
+function logEvent(step: string, details: Record<string, unknown>) {
+  console.log('[public-event-detail]', JSON.stringify({ step, ...details }));
+}
+
+function logError(step: string, details: Record<string, unknown>) {
+  console.error('[public-event-detail]', JSON.stringify({ step, ...details }));
+}
+
 function withTimeout<T>(promiseLike: PromiseLike<T>, ms = 8000): Promise<T> {
   const promise = Promise.resolve(promiseLike);
   return Promise.race([
@@ -16,21 +24,33 @@ function withTimeout<T>(promiseLike: PromiseLike<T>, ms = 8000): Promise<T> {
 }
 
 export async function GET(_request: Request, context: RouteContext) {
+  const startedAt = Date.now();
+  let slugOrId = '';
+
   try {
     const { slug } = await context.params;
-    const slugOrId = decodeURIComponent(String(slug ?? '')).trim();
-    if (!slugOrId) return NextResponse.json({ error: 'Link de evento inválido.' }, { status: 400 });
+    slugOrId = decodeURIComponent(String(slug ?? '')).trim();
+    logEvent('start', { slugOrId });
+
+    if (!slugOrId) {
+      logError('invalid-slug', { slugOrId });
+      return NextResponse.json({ error: 'Link de evento inválido.' }, { status: 400 });
+    }
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     const key = serviceRoleKey || anonKey;
-    if (!supabaseUrl || !key) return NextResponse.json({ error: 'Faltan variables de Supabase.' }, { status: 500 });
+    if (!supabaseUrl || !key) {
+      logError('missing-env', { hasUrl: Boolean(supabaseUrl), hasKey: Boolean(key) });
+      return NextResponse.json({ error: 'Faltan variables de Supabase.' }, { status: 500 });
+    }
 
     const supabase = createClient(supabaseUrl, key, {
       auth: { autoRefreshToken: false, persistSession: false }
     });
 
+    logEvent('query-event-by-slug', { slugOrId });
     let eventQuery = await withTimeout(supabase
       .from('events')
       .select('id,producer_id,name,slug,description,image_url,status,capacity,venue_id,venues(name)')
@@ -39,6 +59,7 @@ export async function GET(_request: Request, context: RouteContext) {
       .maybeSingle());
 
     if (!eventQuery.data && !eventQuery.error) {
+      logEvent('query-event-by-id', { slugOrId });
       eventQuery = await withTimeout(supabase
         .from('events')
         .select('id,producer_id,name,slug,description,image_url,status,capacity,venue_id,venues(name)')
@@ -47,10 +68,18 @@ export async function GET(_request: Request, context: RouteContext) {
         .maybeSingle());
     }
 
-    if (eventQuery.error) return NextResponse.json({ error: eventQuery.error.message }, { status: 400 });
-    if (!eventQuery.data) return NextResponse.json({ error: 'El evento no existe o todavía no está publicado.' }, { status: 404 });
+    if (eventQuery.error) {
+      logError('event-query-error', { slugOrId, message: eventQuery.error.message });
+      return NextResponse.json({ error: eventQuery.error.message }, { status: 400 });
+    }
+    if (!eventQuery.data) {
+      logError('event-not-found', { slugOrId });
+      return NextResponse.json({ error: 'El evento no existe o todavía no está publicado.' }, { status: 404 });
+    }
 
     const eventRow = eventQuery.data;
+    logEvent('event-found', { slugOrId, eventId: eventRow.id, name: eventRow.name });
+
     const [datesRes, sectorsRes, ticketsRes] = await withTimeout(Promise.all([
       supabase.from('event_dates').select('id,event_id,start_datetime,end_datetime,status').eq('event_id', eventRow.id).eq('status', 'active').order('start_datetime', { ascending: true }),
       supabase.from('sectors').select('id,event_id,name,capacity').eq('event_id', eventRow.id),
@@ -58,7 +87,18 @@ export async function GET(_request: Request, context: RouteContext) {
     ]));
 
     const childError = datesRes.error?.message || sectorsRes.error?.message || ticketsRes.error?.message;
-    if (childError) return NextResponse.json({ error: childError }, { status: 400 });
+    if (childError) {
+      logError('children-query-error', { slugOrId, eventId: eventRow.id, message: childError });
+      return NextResponse.json({ error: childError }, { status: 400 });
+    }
+
+    logEvent('children-loaded', {
+      slugOrId,
+      eventId: eventRow.id,
+      dates: datesRes.data?.length ?? 0,
+      sectors: sectorsRes.data?.length ?? 0,
+      tickets: ticketsRes.data?.length ?? 0
+    });
 
     const event = {
       id: eventRow.id,
@@ -96,8 +136,15 @@ export async function GET(_request: Request, context: RouteContext) {
       }))
     };
 
+    logEvent('success', { slugOrId, eventId: eventRow.id, durationMs: Date.now() - startedAt });
     return NextResponse.json({ event });
   } catch (error: any) {
+    logError('unhandled-error', {
+      slugOrId,
+      message: error?.message ?? 'No se pudo cargar el evento.',
+      stack: error?.stack,
+      durationMs: Date.now() - startedAt
+    });
     return NextResponse.json({ error: error?.message ?? 'No se pudo cargar el evento.' }, { status: 500 });
   }
 }
