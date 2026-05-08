@@ -68,13 +68,14 @@ export async function POST(request: Request) {
     promoterLinkId = link?.id ?? null;
   }
 
-  const { data: feeRule } = await supabase
+  const { data: feeRules } = await supabase
     .from('service_fee_rules')
-    .select('percentage,fixed_amount,min_fee,max_fee,currency')
+    .select('percentage,fixed_amount,min_fee,max_fee,currency,created_at')
     .eq('active', true)
     .eq('channel', channel)
-    .limit(1)
-    .maybeSingle();
+    .order('created_at', { ascending: true });
+
+  const feeRule = feeRules?.[0] ?? null;
 
   const unitPrice = Number(ticketType.price ?? 0);
   const subtotal = unitPrice * quantity;
