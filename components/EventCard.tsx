@@ -6,13 +6,18 @@ import { dateTime, money } from '@/lib/format';
 
 const fallbackImage = 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?q=80&w=1600&auto=format&fit=crop';
 
+function eventPublicPath(event: Event) {
+  const slugOrId = String(event.slug || event.id || '').trim();
+  return `/eventos/${encodeURIComponent(slugOrId)}`;
+}
+
 export default function EventCard({ event }: { event: Event }) {
   const prices = event.ticketTypes.map((ticket) => ticket.price).filter((price) => Number.isFinite(price));
   const minPrice = prices.length ? Math.min(...prices) : 0;
   const firstDate = event.dates[0]?.start;
 
   return (
-    <Link href={`/eventos/${event.slug}`} className="group overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-white/8 via-black/80 to-black shadow-xl shadow-black/50 transition-all hover:-translate-y-1 hover:border-white/25 hover:shadow-red-950/30">
+    <Link href={eventPublicPath(event)} className="group overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-white/8 via-black/80 to-black shadow-xl shadow-black/50 transition-all hover:-translate-y-1 hover:border-white/25 hover:shadow-red-950/30">
       <div className="relative h-52 overflow-hidden">
         <Image src={event.imageUrl || fallbackImage} alt={event.name} fill className="object-cover transition-transform duration-500 group-hover:scale-105" />
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent" />
