@@ -18,8 +18,9 @@ export default function EventDetailPage() {
   useEffect(() => {
     async function load() {
       const result = await loadEventsFromSupabase({ publicOnly: true });
+      const slugOrId = decodeURIComponent(String(params.slug ?? '')).trim();
       setError(result.ok ? '' : result.error ?? 'No se pudo cargar el evento.');
-      setEvent(result.events.find((e) => e.slug === params.slug) || null);
+      setEvent(result.events.find((e) => e.slug === slugOrId || e.id === slugOrId) || null);
     }
     load();
   }, [params.slug]);
