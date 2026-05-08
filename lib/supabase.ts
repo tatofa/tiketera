@@ -23,8 +23,8 @@ export function createBrowserSupabaseClient() {
     return null;
   }
 
-  const url: string = envUrl;
-  const anon: string = envAnon;
+  const url = envUrl!;
+  const anon = envAnon!;
 
   if (!browserClient) {
     browserClient = createClient(url, anon, {
