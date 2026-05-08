@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
+type CheckoutItemInput = {
+  ticketTypeId: string;
+  quantity: number;
+};
+
 function calcFee(subtotal: number, rule: any) {
   const percentage = Number(rule?.percentage ?? 0);
   const fixed = Number(rule?.fixed_amount ?? 0);
@@ -11,12 +16,12 @@ function calcFee(subtotal: number, rule: any) {
   return Math.round(max && max > 0 ? Math.min(withMin, max) : withMin);
 }
 
-function normalizeItems(body: any) {
-  const rawItems = Array.isArray(body?.items) ? body.items : [];
-  const normalized = rawItems.map((item: any) => ({
+function normalizeItems(body: any): CheckoutItemInput[] {
+  const rawItems: any[] = Array.isArray(body?.items) ? body.items : [];
+  const normalized: CheckoutItemInput[] = rawItems.map((item: any) => ({
     ticketTypeId: String(item?.ticketTypeId ?? '').trim(),
     quantity: Math.max(1, Number(item?.quantity ?? 1))
-  })).filter((item) => item.ticketTypeId && item.quantity > 0);
+  })).filter((item: CheckoutItemInput) => item.ticketTypeId.length > 0 && item.quantity > 0);
 
   if (normalized.length) return normalized;
 
@@ -58,7 +63,7 @@ export async function POST(request: Request) {
   const event = Array.isArray((eventDate as any).event) ? (eventDate as any).event[0] : (eventDate as any).event;
   if (!event || event.status !== 'published') return NextResponse.json({ error: 'El evento no está publicado.' }, { status: 400 });
 
-  const ticketIds = itemsInput.map((item) => item.ticketTypeId);
+  const ticketIds = itemsInput.map((item: CheckoutItemInput) => item.ticketTypeId);
   const { data: ticketTypes, error: ticketError } = await supabase
     .from('ticket_types')
     .select('id,event_id,sector_id,name,price,currency,max_per_order,status')
@@ -67,10 +72,10 @@ export async function POST(request: Request) {
 
   if (ticketError) return NextResponse.json({ error: ticketError.message }, { status: 400 });
 
-  const items = itemsInput.map((input) => {
+  const items = itemsInput.map((input: CheckoutItemInput) => {
     const ticketType = (ticketTypes ?? []).find((ticket: any) => ticket.id === input.ticketTypeId);
     return ticketType ? { ticketType, quantity: input.quantity } : null;
-  }).filter(Boolean) as { ticketType: any; quantity: number }[];
+  }).filter((item): item is { ticketType: any; quantity: number } => Boolean(item));
 
   if (items.length !== itemsInput.length) return NextResponse.json({ error: 'Alguna entrada seleccionada no existe.' }, { status: 400 });
 
@@ -100,10 +105,10 @@ export async function POST(request: Request) {
 
   const feeRule = feeRules?.[0] ?? null;
 
-  const subtotal = items.reduce((sum, item) => sum + Number(item.ticketType.price ?? 0) * item.quantity, 0);
+  const subtotal = items.reduce((sum: number, item) => sum + Number(item.ticketType.price ?? 0) * item.quantity, 0);
   const serviceFee = calcFee(subtotal, feeRule ?? { percentage: 0, fixed_amount: 0, min_fee: 0, max_fee: null });
   const total = subtotal + serviceFee;
-  const totalQty = items.reduce((sum, item) => sum + item.quantity, 0);
+  const totalQty = items.reduce((sum: number, item) => sum + item.quantity, 0);
   const currency = items[0]?.ticketType?.currency ?? 'ARS';
 
   const baseOrder = {
