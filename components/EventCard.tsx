@@ -7,7 +7,7 @@ const fallbackImage = 'https://images.unsplash.com/photo-1492684223066-81342ee5f
 
 function eventPublicPath(event: Event) {
   const slugOrId = String(event.slug || event.id || '').trim();
-  return `/eventos/${encodeURIComponent(slugOrId)}`;
+  return `/comprar/${encodeURIComponent(slugOrId)}`;
 }
 
 export default function EventCard({ event }: { event: Event }) {
