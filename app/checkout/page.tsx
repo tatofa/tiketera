@@ -8,14 +8,18 @@ import { loadEventsFromSupabase } from '@/lib/supabase-events';
 import { createBrowserSupabaseClient } from '@/lib/supabase';
 import type { Event } from '@/lib/types';
 
-type FeeConfig = { mode: 'percent' | 'fixed'; value: number; currency: string };
+type FeeConfig = { mode: 'percent' | 'fixed'; value: number; minFee?: number; maxFee?: number | null; currency: string };
 
 function ars(value: number) {
   return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(value || 0);
 }
 
 function calcServiceFee(subtotal: number, fee: FeeConfig) {
-  return fee.mode === 'percent' ? Math.round(subtotal * (fee.value / 100)) : Math.round(fee.value);
+  const raw = fee.mode === 'percent' ? subtotal * (fee.value / 100) : fee.value;
+  const minFee = Number(fee.minFee ?? 0);
+  const maxFee = fee.maxFee == null ? null : Number(fee.maxFee);
+  const withMin = Math.max(raw, minFee);
+  return Math.round(maxFee && maxFee > 0 ? Math.min(withMin, maxFee) : withMin);
 }
 
 function CheckoutContent() {
@@ -23,7 +27,7 @@ function CheckoutContent() {
   const params = useSearchParams();
   const [events, setEvents] = useState<Event[]>([]);
   const [buyer, setBuyer] = useState({ name: '', email: '' });
-  const [feeConfig, setFeeConfig] = useState<FeeConfig>({ mode: 'percent', value: 12, currency: 'ARS' });
+  const [feeConfig, setFeeConfig] = useState<FeeConfig>({ mode: 'percent', value: 12, minFee: 0, maxFee: null, currency: 'ARS' });
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState(false);
   const [error, setError] = useState('');
