@@ -9,6 +9,16 @@ function normalizeTicketTypeStatus(status: string) {
   return status === 'active' || status === 'sold_out' ? status : 'paused';
 }
 
+function isFutureOrLiveDate(date: { start?: string; end?: string; status?: string }) {
+  if (date.status !== 'active') return false;
+  const now = Date.now();
+  const endTime = date.end ? new Date(date.end).getTime() : NaN;
+  const startTime = date.start ? new Date(date.start).getTime() : NaN;
+  if (Number.isFinite(endTime)) return endTime >= now;
+  if (Number.isFinite(startTime)) return startTime >= now;
+  return false;
+}
+
 function toDbEvent(event: Event, userId: string, producerId: string) {
   return {
     id: event.id,
@@ -179,7 +189,11 @@ export async function loadEventsFromSupabase(options: LoadEventsOptions = {}) {
     }))
   }));
 
-  return { ok: true, events: mapped, error: null };
+  const visibleEvents = options.publicOnly
+    ? mapped.filter((event) => event.dates.some((date) => isFutureOrLiveDate(date)))
+    : mapped;
+
+  return { ok: true, events: visibleEvents, error: null };
 }
 
 export type ManagedTicketForSupabase = {
