@@ -1,5 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
+import PublicEventTicketPicker from '@/components/PublicEventTicketPicker';
 import { dateTime, money } from '@/lib/format';
+import type { Event } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,6 +12,33 @@ type PageProps = {
 
 function ErrorBox({ message }: { message: string }) {
   return <section className="container-page py-12"><div className="rounded-2xl border border-red-300/30 bg-red-950/40 p-6 text-red-100"><h1 className="text-2xl font-black text-white">No se pudo abrir el evento</h1><p className="mt-2 text-sm">{message}</p><a className="btn-primary mt-6 inline-flex" href="/eventos">Volver a eventos</a></div></section>;
+}
+
+function mapEvent(event: any, dates: any[] = [], sectors: any[] = [], tickets: any[] = []): Event {
+  return {
+    id: event.id,
+    name: event.name,
+    slug: event.slug,
+    description: event.description ?? '',
+    imageUrl: '',
+    venue: '',
+    status: event.status,
+    capacity: event.capacity ?? 0,
+    dates: dates.map((d) => ({ id: d.id, eventId: d.event_id, start: d.start_datetime, end: d.end_datetime ?? undefined, status: d.status })),
+    sectors: sectors.map((s) => ({ id: s.id, eventId: s.event_id, name: s.name, capacity: s.capacity ?? 0 })),
+    ticketTypes: tickets.map((t) => ({
+      id: t.id,
+      eventId: t.event_id,
+      sectorId: t.sector_id,
+      name: t.name,
+      price: Number(t.price ?? 0),
+      currency: t.currency ?? 'ARS',
+      saleStart: t.sale_start ?? '',
+      saleEnd: t.sale_end ?? '',
+      maxPerOrder: t.max_per_order ?? 1,
+      status: t.status === 'active' ? 'active' : 'paused'
+    }))
+  };
 }
 
 export default async function EventDetailPage({ params, searchParams }: PageProps) {
@@ -30,7 +59,7 @@ export default async function EventDetailPage({ params, searchParams }: PageProp
 
   const { data: event, error: eventError } = await supabase
     .from('events')
-    .select('id,name,slug,description,image_url,status,capacity')
+    .select('id,name,slug,description,status,capacity')
     .eq('status', 'published')
     .eq('slug', slugOrId)
     .maybeSingle();
@@ -38,19 +67,16 @@ export default async function EventDetailPage({ params, searchParams }: PageProp
   if (eventError) return <ErrorBox message={eventError.message} />;
   if (!event) return <ErrorBox message="El evento no existe o todavía no está publicado." />;
 
-  const [{ data: dates, error: datesError }, { data: tickets, error: ticketsError }] = await Promise.all([
+  const [{ data: dates, error: datesError }, { data: sectors, error: sectorsError }, { data: tickets, error: ticketsError }] = await Promise.all([
     supabase.from('event_dates').select('id,event_id,start_datetime,end_datetime,status').eq('event_id', event.id).eq('status', 'active').order('start_datetime', { ascending: true }),
-    supabase.from('ticket_types').select('id,event_id,sector_id,name,price,currency,max_per_order,status').eq('event_id', event.id).eq('status', 'active').order('price', { ascending: true })
+    supabase.from('sectors').select('id,event_id,name,capacity').eq('event_id', event.id),
+    supabase.from('ticket_types').select('id,event_id,sector_id,name,price,currency,sale_start,sale_end,max_per_order,status').eq('event_id', event.id).eq('status', 'active').order('price', { ascending: true })
   ]);
 
-  if (datesError) return <ErrorBox message={datesError.message} />;
-  if (ticketsError) return <ErrorBox message={ticketsError.message} />;
+  const childError = datesError?.message || sectorsError?.message || ticketsError?.message;
+  if (childError) return <ErrorBox message={childError} />;
 
-  const firstDate = dates?.[0];
-  const firstTicket = tickets?.[0];
-  const checkoutHref = firstDate && firstTicket
-    ? `/checkout?eventId=${event.id}&eventDateId=${firstDate.id}&ticketTypeId=${firstTicket.id}&qty=1${rrppCode ? `&rrpp=${encodeURIComponent(rrppCode)}` : ''}`
-    : '';
+  const publicEvent = mapEvent(event, dates ?? [], sectors ?? [], tickets ?? []);
 
-  return <section className="container-page py-10"><div className="grid gap-8 lg:grid-cols-[1fr_380px]"><div className="card p-6"><p className="font-semibold text-red-300">Evento</p><h1 className="mt-2 text-4xl font-black text-white">{event.name}</h1>{rrppCode&&<p className="mt-3 inline-flex rounded-2xl bg-red-950/35 px-3 py-2 text-sm font-bold text-red-100">Link RRPP /{rrppCode}</p>}<p className="mt-4 text-lg text-white/65">{event.description || 'Evento disponible próximamente.'}</p><div className="mt-8 grid gap-4 sm:grid-cols-2"><div className="rounded-2xl border border-white/10 bg-white/5 p-5"><h3 className="font-bold text-white">Funciones</h3>{dates?.length?dates.map((d: any) => <p key={d.id} className="mt-2 text-white/65">{dateTime(d.start_datetime)}</p>):<p className="mt-2 text-white/55">Fecha a confirmar</p>}</div><div className="rounded-2xl border border-white/10 bg-white/5 p-5"><h3 className="font-bold text-white">Entradas</h3>{tickets?.length?tickets.map((t: any) => <p key={t.id} className="mt-2 text-white/65">{t.name} · {money(Number(t.price ?? 0), t.currency ?? 'ARS')}</p>):<p className="mt-2 text-white/55">Sin entradas activas</p>}</div></div></div><div className="card p-6"><h2 className="text-xl font-black text-white">Comprar entradas</h2>{firstTicket?<div className="mt-5 rounded-2xl bg-white/5 p-4"><p className="text-sm text-white/60">Entrada seleccionada</p><p className="mt-1 text-2xl font-black text-white">{firstTicket.name}</p><p className="mt-2 text-lg font-black text-red-300">{money(Number(firstTicket.price ?? 0), firstTicket.currency ?? 'ARS')}</p><p className="mt-2 text-xs text-white/45">Cantidad inicial: 1. Podés ajustar la compra en checkout.</p></div>:<p className="mt-4 text-white/60">No hay tickets activos para este evento.</p>}{checkoutHref?<a className="btn-primary mt-6 w-full" href={checkoutHref}>Ir al checkout</a>:<button className="btn-secondary mt-6 w-full" disabled>Sin entradas disponibles</button>}<a className="btn-secondary mt-3 w-full" href="/eventos">Volver a eventos</a></div></div></section>;
+  return <section className="container-page py-10"><div className="grid gap-8 lg:grid-cols-[1fr_420px]"><div className="card p-6"><p className="font-semibold text-red-300">Evento</p><h1 className="mt-2 text-4xl font-black text-white">{publicEvent.name}</h1>{rrppCode&&<p className="mt-3 inline-flex rounded-2xl bg-red-950/35 px-3 py-2 text-sm font-bold text-red-100">Link RRPP /{rrppCode}</p>}<p className="mt-4 text-lg text-white/65">{publicEvent.description || 'Evento disponible próximamente.'}</p><div className="mt-8 grid gap-4 sm:grid-cols-2"><div className="rounded-2xl border border-white/10 bg-white/5 p-5"><h3 className="font-bold text-white">Funciones</h3>{publicEvent.dates.length?publicEvent.dates.map((d) => <p key={d.id} className="mt-2 text-white/65">{dateTime(d.start)}</p>):<p className="mt-2 text-white/55">Fecha a confirmar</p>}</div><div className="rounded-2xl border border-white/10 bg-white/5 p-5"><h3 className="font-bold text-white">Sectores</h3>{publicEvent.sectors.length?publicEvent.sectors.map((s) => <p key={s.id} className="mt-2 text-white/65">{s.name} · capacidad {s.capacity}</p>):<p className="mt-2 text-white/55">Sector general</p>}</div></div><div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-5"><h3 className="font-bold text-white">Tipos de entrada</h3>{publicEvent.ticketTypes.length?publicEvent.ticketTypes.map((t) => <p key={t.id} className="mt-2 text-white/65">{t.name} · {money(t.price, t.currency)}</p>):<p className="mt-2 text-white/55">Sin entradas activas</p>}</div></div><PublicEventTicketPicker event={publicEvent} rrppCode={rrppCode} /></div></section>;
 }
