@@ -1,5 +1,4 @@
 import Image from 'next/image';
-import Link from 'next/link';
 import { CalendarDays, MapPin } from 'lucide-react';
 import { Event } from '@/lib/types';
 import { dateTime, money } from '@/lib/format';
@@ -15,9 +14,10 @@ export default function EventCard({ event }: { event: Event }) {
   const prices = event.ticketTypes.map((ticket) => ticket.price).filter((price) => Number.isFinite(price));
   const minPrice = prices.length ? Math.min(...prices) : 0;
   const firstDate = event.dates[0]?.start;
+  const href = eventPublicPath(event);
 
   return (
-    <Link href={eventPublicPath(event)} className="group overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-white/8 via-black/80 to-black shadow-xl shadow-black/50 transition-all hover:-translate-y-1 hover:border-white/25 hover:shadow-red-950/30">
+    <a href={href} className="group block cursor-pointer overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-white/8 via-black/80 to-black shadow-xl shadow-black/50 transition-all hover:-translate-y-1 hover:border-white/25 hover:shadow-red-950/30">
       <div className="relative h-52 overflow-hidden">
         <Image src={event.imageUrl || fallbackImage} alt={event.name} fill className="object-cover transition-transform duration-500 group-hover:scale-105" />
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-transparent" />
@@ -35,6 +35,6 @@ export default function EventCard({ event }: { event: Event }) {
           <span className="text-lg font-black text-red-300">{prices.length ? money(minPrice) : 'Sin precio'}</span>
         </div>
       </div>
-    </Link>
+    </a>
   );
 }
