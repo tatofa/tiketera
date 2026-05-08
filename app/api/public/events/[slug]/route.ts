@@ -53,7 +53,7 @@ export async function GET(_request: Request, context: RouteContext) {
     logEvent('query-event-by-slug', { slugOrId });
     let eventQuery = await withTimeout(supabase
       .from('events')
-      .select('id,producer_id,name,slug,description,image_url,status,capacity,venue_id,venues(name)')
+      .select('id,producer_id,name,slug,description,status,capacity,venue_id,venues(name)')
       .eq('status', 'published')
       .eq('slug', slugOrId)
       .maybeSingle());
@@ -62,7 +62,7 @@ export async function GET(_request: Request, context: RouteContext) {
       logEvent('query-event-by-id', { slugOrId });
       eventQuery = await withTimeout(supabase
         .from('events')
-        .select('id,producer_id,name,slug,description,image_url,status,capacity,venue_id,venues(name)')
+        .select('id,producer_id,name,slug,description,status,capacity,venue_id,venues(name)')
         .eq('status', 'published')
         .eq('id', slugOrId)
         .maybeSingle());
@@ -92,20 +92,12 @@ export async function GET(_request: Request, context: RouteContext) {
       return NextResponse.json({ error: childError }, { status: 400 });
     }
 
-    logEvent('children-loaded', {
-      slugOrId,
-      eventId: eventRow.id,
-      dates: datesRes.data?.length ?? 0,
-      sectors: sectorsRes.data?.length ?? 0,
-      tickets: ticketsRes.data?.length ?? 0
-    });
-
     const event = {
       id: eventRow.id,
       name: eventRow.name,
       slug: eventRow.slug,
       description: eventRow.description ?? '',
-      imageUrl: eventRow.image_url ?? '',
+      imageUrl: '',
       venue: (eventRow.venues as any)?.name ?? '',
       status: eventRow.status,
       capacity: eventRow.capacity ?? 0,
@@ -129,8 +121,8 @@ export async function GET(_request: Request, context: RouteContext) {
         name: ticket.name,
         price: Number(ticket.price ?? 0),
         currency: ticket.currency ?? 'ARS',
-        saleStart: ticket.sale_start,
-        saleEnd: ticket.sale_end,
+        saleStart: ticket.sale_start ?? '',
+        saleEnd: ticket.sale_end ?? '',
         maxPerOrder: ticket.max_per_order ?? 1,
         status: ticket.status === 'active' ? 'active' : 'paused'
       }))
