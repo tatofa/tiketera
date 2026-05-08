@@ -7,7 +7,8 @@ type RouteContext = {
   params: Promise<{ slug: string }>;
 };
 
-function withTimeout<T>(promise: Promise<T>, ms = 8000): Promise<T> {
+function withTimeout<T>(promiseLike: PromiseLike<T>, ms = 8000): Promise<T> {
+  const promise = Promise.resolve(promiseLike);
   return Promise.race([
     promise,
     new Promise<T>((_, reject) => setTimeout(() => reject(new Error('Tiempo de espera agotado al consultar Supabase.')), ms))
