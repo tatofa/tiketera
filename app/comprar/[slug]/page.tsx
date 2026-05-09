@@ -10,6 +10,11 @@ function ErrorBox({ message }: { message: string }) {
   return <section className="container-page py-12"><div className="rounded-2xl border border-red-300/30 bg-red-950/40 p-6 text-red-100"><h1 className="text-2xl font-black text-white">No se pudo abrir la compra</h1><p className="mt-2 text-sm">{message}</p><a className="btn-primary mt-6 inline-flex" href="/eventos">Volver a eventos</a></div></section>;
 }
 
+function InfoItem({ label, value }: { label: string; value?: string | number }) {
+  if (value === undefined || value === null || value === '') return null;
+  return <div className="rounded-2xl border border-white/10 bg-white/5 p-4"><p className="text-xs font-black uppercase tracking-wide text-white/40">{label}</p><p className="mt-1 font-bold text-white">{value}</p></div>;
+}
+
 export default function StandalonePurchasePage() {
   const params = useParams<{ slug: string }>();
   const searchParams = useSearchParams();
@@ -20,25 +25,15 @@ export default function StandalonePurchasePage() {
 
   useEffect(() => {
     const controller = new AbortController();
-
     async function load() {
       setLoading(true);
       setError('');
       setEvent(null);
-
       const slugOrId = decodeURIComponent(String(params.slug ?? '')).trim();
-      if (!slugOrId) {
-        setError('Link de compra inválido.');
-        setLoading(false);
-        return;
-      }
-
+      if (!slugOrId) { setError('Link de compra inválido.'); setLoading(false); return; }
       const timeout = window.setTimeout(() => controller.abort(), 10000);
       try {
-        const res = await fetch(`/api/public/events/${encodeURIComponent(slugOrId)}`, {
-          cache: 'no-store',
-          signal: controller.signal
-        });
+        const res = await fetch(`/api/public/events/${encodeURIComponent(slugOrId)}`, { cache: 'no-store', signal: controller.signal });
         const json = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(json.error ?? 'No se pudo cargar el evento.');
         setEvent(json.event);
@@ -49,7 +44,6 @@ export default function StandalonePurchasePage() {
         setLoading(false);
       }
     }
-
     load();
     return () => controller.abort();
   }, [params.slug]);
@@ -58,5 +52,7 @@ export default function StandalonePurchasePage() {
   if (error) return <ErrorBox message={error} />;
   if (!event) return <ErrorBox message="Evento no encontrado." />;
 
-  return <section className="container-page py-10"><div className="mb-8"><a href="/eventos" className="text-sm font-bold text-white/55 hover:text-white">← Volver a eventos</a><p className="mt-6 font-semibold text-red-300">Comprar entradas</p><h1 className="mt-2 text-5xl font-black text-white">{event.name}</h1>{rrppCode&&<p className="mt-3 inline-flex rounded-2xl bg-red-950/35 px-3 py-2 text-sm font-bold text-red-100">Link RRPP /{rrppCode}</p>}<p className="mt-4 max-w-3xl text-lg text-white/65">{event.description || 'Evento disponible próximamente.'}</p></div><div className="grid gap-8 lg:grid-cols-[1fr_420px]"><div className="space-y-5"><div className="card p-6"><h2 className="text-2xl font-black text-white">Información del evento</h2><div className="mt-5 grid gap-4 sm:grid-cols-2"><div className="rounded-2xl border border-white/10 bg-white/5 p-5"><h3 className="font-bold text-white">Funciones</h3>{event.dates.length?event.dates.map((d) => <p key={d.id} className="mt-2 text-white/65">{dateTime(d.start)}</p>):<p className="mt-2 text-white/55">Fecha a confirmar</p>}</div><div className="rounded-2xl border border-white/10 bg-white/5 p-5"><h3 className="font-bold text-white">Sectores</h3>{event.sectors.length?event.sectors.map((s) => <p key={s.id} className="mt-2 text-white/65">{s.name} · capacidad {s.capacity}</p>):<p className="mt-2 text-white/55">Sector general</p>}</div></div></div><div className="card p-6"><h2 className="text-2xl font-black text-white">Tipos de entrada</h2>{event.ticketTypes.length?<div className="mt-5 space-y-3">{event.ticketTypes.map((t) => <div key={t.id} className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/5 p-4"><div><p className="font-black text-white">{t.name}</p><p className="mt-1 text-sm text-white/45">Máximo {t.maxPerOrder} por compra</p></div><p className="font-black text-red-300">{money(t.price, t.currency)}</p></div>)}</div>:<p className="mt-4 text-white/55">Sin entradas activas</p>}</div></div><PublicEventTicketPicker event={event} rrppCode={rrppCode} /></div></section>;
+  const location = [event.address, event.locality, event.province].filter(Boolean).join(' · ') || event.venue || 'Lugar a confirmar';
+
+  return <section className="container-page py-10"><div className="mb-8"><a href="/eventos" className="text-sm font-bold text-white/55 hover:text-white">← Volver a eventos</a><div className="mt-6 flex flex-wrap gap-2">{event.eventType&&<span className="rounded-full bg-red-500/15 px-3 py-1 text-xs font-black uppercase tracking-wide text-red-200">{event.eventType}</span>}{event.category&&<span className="rounded-full bg-white/10 px-3 py-1 text-xs font-bold text-white/65">{event.category}</span>}{event.ageRestriction&&<span className="rounded-full bg-white/10 px-3 py-1 text-xs font-bold text-white/65">{event.ageRestriction}</span>}</div><h1 className="mt-4 text-5xl font-black text-white">{event.name}</h1>{rrppCode&&<p className="mt-3 inline-flex rounded-2xl bg-red-950/35 px-3 py-2 text-sm font-bold text-red-100">Link RRPP /{rrppCode}</p>}<p className="mt-4 max-w-3xl text-lg text-white/65">{event.summary || event.description || 'Evento disponible próximamente.'}</p></div><div className="grid gap-8 lg:grid-cols-[1fr_420px]"><div className="space-y-5"><div className="card p-6"><h2 className="text-2xl font-black text-white">Información del evento</h2><div className="mt-5 grid gap-4 sm:grid-cols-2"><InfoItem label="Organiza" value={event.organizerName}/><InfoItem label="Artista / participante" value={event.artistName}/><InfoItem label="Ubicación" value={location}/><InfoItem label="Capacidad" value={event.capacity ? `${event.capacity} personas` : ''}/><div className="rounded-2xl border border-white/10 bg-white/5 p-5"><h3 className="font-bold text-white">Funciones</h3>{event.dates.length?event.dates.map((d) => <p key={d.id} className="mt-2 text-white/65">{dateTime(d.start)}</p>):<p className="mt-2 text-white/55">Fecha a confirmar</p>}</div><div className="rounded-2xl border border-white/10 bg-white/5 p-5"><h3 className="font-bold text-white">Sectores</h3>{event.sectors.length?event.sectors.map((s) => <p key={s.id} className="mt-2 text-white/65">{s.name} · capacidad {s.capacity}</p>):<p className="mt-2 text-white/55">Sector general</p>}</div></div>{event.description&&<div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-5"><h3 className="font-bold text-white">Descripción</h3><p className="mt-2 whitespace-pre-line text-white/65">{event.description}</p></div>}</div><div className="card p-6"><h2 className="text-2xl font-black text-white">Tipos de entrada</h2>{event.ticketTypes.length?<div className="mt-5 space-y-3">{event.ticketTypes.map((t) => <div key={t.id} className="flex items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/5 p-4"><div><p className="font-black text-white">{t.name}</p><p className="mt-1 text-sm text-white/45">Máximo {t.maxPerOrder} por compra</p></div><p className="font-black text-red-300">{money(t.price, t.currency)}</p></div>)}</div>:<p className="mt-4 text-white/55">Sin entradas activas</p>}</div>{(event.accessPolicy||event.termsAndConditions||event.purchaseMessage)&&<div className="card p-6"><h2 className="text-2xl font-black text-white">Condiciones</h2>{event.accessPolicy&&<div className="mt-4"><h3 className="font-bold text-white">Acceso</h3><p className="mt-2 whitespace-pre-line text-white/65">{event.accessPolicy}</p></div>}{event.termsAndConditions&&<div className="mt-4"><h3 className="font-bold text-white">Términos y condiciones</h3><p className="mt-2 whitespace-pre-line text-white/65">{event.termsAndConditions}</p></div>}{event.purchaseMessage&&<div className="mt-4"><h3 className="font-bold text-white">Mensaje post compra</h3><p className="mt-2 whitespace-pre-line text-white/65">{event.purchaseMessage}</p></div>}</div>}</div><PublicEventTicketPicker event={event} rrppCode={rrppCode} /></div></section>;
 }
