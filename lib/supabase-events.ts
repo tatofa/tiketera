@@ -92,9 +92,9 @@ export async function getSupabaseSession() {
 }
 
 async function resolveProducerId(supabase: NonNullable<ReturnType<typeof createBrowserSupabaseClient>>, userId: string) {
-  const { data: member } = await supabase.from('producer_members').select('producer_id').eq('profile_id', userId).limit(1).maybeSingle();
+  const { data: member } = await (supabase as any).from('producer_members').select('producer_id').eq('profile_id', userId).limit(1).maybeSingle();
   if (member?.producer_id) return member.producer_id as string;
-  const { data: owned } = await supabase.from('producers').select('id').eq('owner_profile_id', userId).limit(1).maybeSingle();
+  const { data: owned } = await (supabase as any).from('producers').select('id').eq('owner_profile_id', userId).limit(1).maybeSingle();
   return owned?.id ? owned.id as string : null;
 }
 
@@ -103,29 +103,31 @@ export async function saveEventToSupabase(event: Event): Promise<DbMutationResul
   if (!supabase || !userId) return { ok: false, skipped: true, error: 'Sin sesión Supabase' };
   const producerId = await resolveProducerId(supabase, userId);
   if (!producerId) return { ok: false, skipped: false, error: 'El usuario no tiene productor asociado. Creá un producer y un producer_member para este perfil.' };
-  const { error: eventError } = await supabase.from('events').upsert(toDbEvent(event, userId, producerId), { onConflict: 'id' });
+  const db = supabase as any;
+  const { error: eventError } = await db.from('events').upsert(toDbEvent(event, userId, producerId), { onConflict: 'id' });
   if (eventError) return { ok: false, skipped: false, error: eventError.message };
-  if (event.dates.length) { const { error } = await supabase.from('event_dates').upsert(event.dates.map(toDbDate), { onConflict: 'id' }); if (error) return { ok: false, skipped: false, error: error.message }; }
-  if (event.sectors.length) { const { error } = await supabase.from('sectors').upsert(event.sectors.map(toDbSector), { onConflict: 'id' }); if (error) return { ok: false, skipped: false, error: error.message }; }
-  if (event.ticketTypes.length) { const { error } = await supabase.from('ticket_types').upsert(event.ticketTypes.map(toDbTicketType), { onConflict: 'id' }); if (error) return { ok: false, skipped: false, error: error.message }; }
+  if (event.dates.length) { const { error } = await db.from('event_dates').upsert(event.dates.map(toDbDate), { onConflict: 'id' }); if (error) return { ok: false, skipped: false, error: error.message }; }
+  if (event.sectors.length) { const { error } = await db.from('sectors').upsert(event.sectors.map(toDbSector), { onConflict: 'id' }); if (error) return { ok: false, skipped: false, error: error.message }; }
+  if (event.ticketTypes.length) { const { error } = await db.from('ticket_types').upsert(event.ticketTypes.map(toDbTicketType), { onConflict: 'id' }); if (error) return { ok: false, skipped: false, error: error.message }; }
   return { ok: true, skipped: false, error: null };
 }
 
 export async function loadEventsFromSupabase(options: LoadEventsOptions = {}) {
   const supabase = createBrowserSupabaseClient();
   if (!supabase) return { ok: false, events: [] as Event[], error: 'Falta configurar Supabase' };
+  const db = supabase as any;
   if (!options.publicOnly) { const { data } = await supabase.auth.getSession(); if (!data.session?.user?.id) return { ok: false, events: [] as Event[], error: 'Sin sesión Supabase' }; }
   const eventSelect = options.publicOnly ? `id,producer_id,name,slug,description,status,capacity,venue_id,venues(name),${extendedEventColumns}` : `id,producer_id,name,slug,description,image_url,status,capacity,venue_id,venues(name),${extendedEventColumns}`;
-  let query = supabase.from('events').select(eventSelect).order('created_at', { ascending: false });
+  let query: any = db.from('events').select(eventSelect).order('created_at', { ascending: false });
   if (options.publicOnly) query = query.eq('status', 'published');
   const { data: events, error: eventsError } = await query;
   if (eventsError) return { ok: false, events: [] as Event[], error: eventsError.message };
   const ids = (events ?? []).map((event: any) => event.id);
   if (!ids.length) return { ok: true, events: [], error: null };
   const [{ data: dates }, { data: sectors }, { data: ticketTypes }] = await Promise.all([
-    supabase.from('event_dates').select('id,event_id,start_datetime,end_datetime,status').in('event_id', ids),
-    supabase.from('sectors').select('id,event_id,name,capacity').in('event_id', ids),
-    supabase.from('ticket_types').select('id,event_id,sector_id,name,price,currency,sale_start,sale_end,max_per_order,status').in('event_id', ids)
+    db.from('event_dates').select('id,event_id,start_datetime,end_datetime,status').in('event_id', ids),
+    db.from('sectors').select('id,event_id,name,capacity').in('event_id', ids),
+    db.from('ticket_types').select('id,event_id,sector_id,name,price,currency,sale_start,sale_end,max_per_order,status').in('event_id', ids)
   ]);
   const mapped = (events ?? []).map((event: any) => mapEvent(event, dates ?? [], sectors ?? [], ticketTypes ?? [], Boolean(options.publicOnly)));
   const visibleEvents = options.publicOnly ? mapped.filter((event) => event.dates.some((date) => isFutureOrLiveDate(date))) : mapped;
@@ -136,7 +138,7 @@ export type ManagedTicketForSupabase = { id: string; eventId: string; name: stri
 export async function saveManagedTicketToSupabase(ticket: ManagedTicketForSupabase, sectorId: string): Promise<DbMutationResult> {
   const { supabase, userId } = await getSupabaseSession();
   if (!supabase || !userId) return { ok: false, skipped: true, error: 'Sin sesión Supabase' };
-  const { error } = await supabase.from('ticket_types').upsert({ id: ticket.id, event_id: ticket.eventId, sector_id: sectorId, name: ticket.name, price: ticket.price, currency: 'ARS', sale_start: ticket.saleStart, sale_end: ticket.saleEnd, max_per_order: ticket.maxPerOrder, status: normalizeTicketTypeStatus(ticket.status) }, { onConflict: 'id' });
+  const { error } = await (supabase as any).from('ticket_types').upsert({ id: ticket.id, event_id: ticket.eventId, sector_id: sectorId, name: ticket.name, price: ticket.price, currency: 'ARS', sale_start: ticket.saleStart, sale_end: ticket.saleEnd, max_per_order: ticket.maxPerOrder, status: normalizeTicketTypeStatus(ticket.status) }, { onConflict: 'id' });
   if (error) return { ok: false, skipped: false, error: error.message };
   return { ok: true, skipped: false, error: null };
 }
@@ -144,12 +146,13 @@ export async function saveManagedTicketToSupabase(ticket: ManagedTicketForSupaba
 export async function createCourtesyTicketsInSupabase(input: { eventId: string; eventDateId: string; ticketTypeId: string; sectorId: string; holderName: string; holderEmail: string; quantity: number; }) {
   const { supabase, userId } = await getSupabaseSession();
   if (!supabase || !userId) return { ok: false, skipped: true, error: 'Sin sesión Supabase' };
-  const { data: eventRow, error: eventError } = await supabase.from('events').select('producer_id').eq('id', input.eventId).single();
+  const db = supabase as any;
+  const { data: eventRow, error: eventError } = await db.from('events').select('producer_id').eq('id', input.eventId).single();
   if (eventError) return { ok: false, skipped: false, error: eventError.message };
-  const { data: order, error: orderError } = await supabase.from('orders').insert({ user_id: userId, producer_id: eventRow.producer_id, buyer_name: input.holderName || input.holderEmail, buyer_email: input.holderEmail, status: 'paid', subtotal_amount: 0, service_fee_amount: 0, discount_amount: 0, total_amount: 0, currency: 'ARS', channel: 'box_office' }).select('id').single();
+  const { data: order, error: orderError } = await db.from('orders').insert({ user_id: userId, producer_id: eventRow.producer_id, buyer_name: input.holderName || input.holderEmail, buyer_email: input.holderEmail, status: 'paid', subtotal_amount: 0, service_fee_amount: 0, discount_amount: 0, total_amount: 0, currency: 'ARS', channel: 'box_office' }).select('id').single();
   if (orderError) return { ok: false, skipped: false, error: orderError.message };
   const rows = Array.from({ length: Math.max(1, input.quantity) }).map(() => ({ id: uuid(), order_id: order.id, event_id: input.eventId, event_date_id: input.eventDateId, ticket_type_id: input.ticketTypeId, sector_id: input.sectorId, qr_token: `TICKETERA:${uuid()}`, status: 'valid', holder_name: input.holderName || input.holderEmail, holder_email: input.holderEmail }));
-  const { error } = await supabase.from('tickets').insert(rows);
+  const { error } = await db.from('tickets').insert(rows);
   if (error) return { ok: false, skipped: false, error: error.message };
   return { ok: true, skipped: false, error: null };
 }
