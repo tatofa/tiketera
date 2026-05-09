@@ -42,6 +42,18 @@ export type Event = {
   dates: EventDate[];
   sectors: Sector[];
   ticketTypes: TicketType[];
+  eventType?: string;
+  category?: string;
+  organizerName?: string;
+  artistName?: string;
+  summary?: string;
+  purchaseMessage?: string;
+  ageRestriction?: string;
+  province?: string;
+  locality?: string;
+  address?: string;
+  accessPolicy?: string;
+  termsAndConditions?: string;
 };
 
 export type CartItem = {
