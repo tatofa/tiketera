@@ -129,8 +129,8 @@ export async function loadEventsFromSupabase(options: LoadEventsOptions = {}) {
     db.from('sectors').select('id,event_id,name,capacity').in('event_id', ids),
     db.from('ticket_types').select('id,event_id,sector_id,name,price,currency,sale_start,sale_end,max_per_order,status').in('event_id', ids)
   ]);
-  const mapped = (events ?? []).map((event: any) => mapEvent(event, dates ?? [], sectors ?? [], ticketTypes ?? [], Boolean(options.publicOnly)));
-  const visibleEvents = options.publicOnly ? mapped.filter((event) => event.dates.some((date) => isFutureOrLiveDate(date))) : mapped;
+  const mapped: Event[] = (events ?? []).map((event: any) => mapEvent(event, dates ?? [], sectors ?? [], ticketTypes ?? [], Boolean(options.publicOnly)));
+  const visibleEvents: Event[] = options.publicOnly ? mapped.filter((event: Event) => event.dates.some((date: Event['dates'][number]) => isFutureOrLiveDate(date))) : mapped;
   return { ok: true, events: visibleEvents, error: null };
 }
 
