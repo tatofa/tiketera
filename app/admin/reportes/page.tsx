@@ -12,6 +12,13 @@ type ReportState = { loading: boolean; error: string; events: EventRow[]; ticket
 
 function formatMoney(amount: number, currency = 'ARS') { return new Intl.NumberFormat('es-AR', { style: 'currency', currency, maximumFractionDigits: 0 }).format(amount || 0); }
 function asNumber(value: unknown) { return Number(value ?? 0) || 0; }
+function normalizeOrderItems(rows: unknown): OrderItemRow[] {
+  if (!Array.isArray(rows)) return [];
+  return rows.map((row: any) => {
+    const ticketType = Array.isArray(row.ticket_type) ? row.ticket_type[0] : row.ticket_type;
+    return { ...row, ticket_type: ticketType ?? null } as OrderItemRow;
+  });
+}
 
 function ReportesContent(){
  const [state,setState]=useState<ReportState>({loading:true,error:'',events:[],ticketTypes:[],orderItems:[],sales:[]});
@@ -34,7 +41,7 @@ function ReportesContent(){
    if(eventsRes.error){setState({loading:false,error:eventsRes.error.message,events:[],ticketTypes:[],orderItems:[],sales:[]}); return;}
    const events=(eventsRes.data ?? []) as EventRow[];
    const ticketTypes=(ticketsRes.data ?? []) as TicketTypeRow[];
-   const orderItems=(itemsRes.data ?? []) as OrderItemRow[];
+   const orderItems=normalizeOrderItems(itemsRes.data);
    const sales=(salesRes.data ?? []) as SalesRow[];
    const error=ticketsRes.error?.message || itemsRes.error?.message || salesRes.error?.message || '';
    setState({loading:false,error,events,ticketTypes,orderItems,sales});
