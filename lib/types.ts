@@ -42,6 +42,8 @@ export type Event = {
   dates: EventDate[];
   sectors: Sector[];
   ticketTypes: TicketType[];
+  eventCode?: string;
+  eventKey?: string;
   eventType?: string;
   category?: string;
   organizerName?: string;
