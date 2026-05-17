@@ -5,7 +5,7 @@ import type { Event } from './types';
 export type DbMutationResult = { ok: boolean; skipped: boolean; error: string | null };
 export type LoadEventsOptions = { publicOnly?: boolean };
 
-const extendedEventColumns = 'event_type,category,organizer_name,artist_name,summary,purchase_message,age_restriction,province,locality,address,access_policy,terms_and_conditions';
+const extendedEventColumns = 'event_code,event_key,event_type,category,organizer_name,artist_name,summary,purchase_message,age_restriction,province,locality,address,access_policy,terms_and_conditions';
 
 function normalizeTicketTypeStatus(status: string) {
   return status === 'active' || status === 'sold_out' ? status : 'paused';
@@ -21,6 +21,13 @@ function isFutureOrLiveDate(date: { start?: string; end?: string; status?: strin
   return false;
 }
 
+function fallbackEventCode(event: Event) {
+  return String(event.eventCode || event.slug || event.id.slice(0, 8)).trim().toUpperCase();
+}
+function fallbackEventKey(event: Event) {
+  return String(event.eventKey || event.id.slice(0, 6)).trim().toUpperCase();
+}
+
 function toDbEvent(event: Event, userId: string, producerId: string) {
   return {
     id: event.id,
@@ -32,6 +39,8 @@ function toDbEvent(event: Event, userId: string, producerId: string) {
     status: event.status,
     capacity: event.capacity,
     created_by: userId,
+    event_code: fallbackEventCode(event),
+    event_key: fallbackEventKey(event),
     event_type: event.eventType ?? null,
     category: event.category ?? null,
     organizer_name: event.organizerName ?? null,
@@ -66,6 +75,8 @@ function mapEvent(event: any, dates: any[] = [], sectors: any[] = [], ticketType
     venue: event.venues?.name ?? event.address ?? '',
     status: event.status,
     capacity: event.capacity ?? 0,
+    eventCode: event.event_code ?? '',
+    eventKey: event.event_key ?? '',
     eventType: event.event_type ?? '',
     category: event.category ?? '',
     organizerName: event.organizer_name ?? '',
