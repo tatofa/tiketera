@@ -9,42 +9,30 @@ export async function POST(request: Request) {
   const token = (request.headers.get('authorization') ?? '').replace('Bearer ', '').trim();
   if (!token) return NextResponse.json({ error: 'No autenticado.' }, { status: 401 });
 
-  const { eventCode } = await request.json().catch(() => ({ eventCode: '' }));
-  const code = String(eventCode ?? '').trim().toLowerCase();
-  if (!code) return NextResponse.json({ error: 'Ingresá el código del evento.' }, { status: 400 });
+  const body = await request.json().catch(() => ({}));
+  const eventCode = String(body?.eventCode ?? '').trim().toUpperCase();
+  const eventKey = String(body?.eventKey ?? '').trim().toUpperCase();
+  if (!eventCode || !eventKey) return NextResponse.json({ error: 'Ingresá código y llave del evento.' }, { status: 400 });
 
   const supabase = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: `Bearer ${token}` } } });
   const { data: userData, error: userError } = await supabase.auth.getUser();
   if (userError || !userData.user) return NextResponse.json({ error: 'Sesión inválida.' }, { status: 401 });
 
-  const { data: eventDate, error } = await supabase
-    .from('event_dates')
-    .select('id,start_datetime,end_datetime,status,event:events(id,name,slug,status,producer_id)')
-    .eq('id', code)
+  const byCode = await supabase
+    .from('events')
+    .select('id,name,slug,status,producer_id,event_code,event_key,event_dates(id,start_datetime,end_datetime,status)')
+    .eq('event_code', eventCode)
+    .eq('event_key', eventKey)
+    .eq('event_dates.status', 'active')
     .maybeSingle();
 
-  let sessionEventDate = eventDate;
-  if (!sessionEventDate) {
-    const bySlug = await supabase
-      .from('events')
-      .select('id,name,slug,status,producer_id,event_dates(id,start_datetime,end_datetime,status)')
-      .eq('slug', code)
-      .eq('event_dates.status', 'active')
-      .maybeSingle();
-    if (bySlug.data?.event_dates?.length) {
-      sessionEventDate = {
-        id: bySlug.data.event_dates[0].id,
-        start_datetime: bySlug.data.event_dates[0].start_datetime,
-        end_datetime: bySlug.data.event_dates[0].end_datetime,
-        status: bySlug.data.event_dates[0].status,
-        event: { id: bySlug.data.id, name: bySlug.data.name, slug: bySlug.data.slug, status: bySlug.data.status, producer_id: bySlug.data.producer_id }
-      } as any;
-    }
-  }
+  if (byCode.error || !byCode.data) return NextResponse.json({ error: 'Código o llave de evento incorrectos.' }, { status: 404 });
+  const event = byCode.data;
+  if (event.status !== 'published') return NextResponse.json({ error: 'El evento no está publicado.' }, { status: 400 });
 
-  if (error || !sessionEventDate) return NextResponse.json({ error: 'Código de evento o función no encontrado.' }, { status: 404 });
-  const event = Array.isArray((sessionEventDate as any).event) ? (sessionEventDate as any).event[0] : (sessionEventDate as any).event;
-  if (!event || event.status !== 'published') return NextResponse.json({ error: 'El evento no está publicado.' }, { status: 400 });
+  const eventDates = Array.isArray((event as any).event_dates) ? (event as any).event_dates : [];
+  const eventDate = eventDates[0];
+  if (!eventDate) return NextResponse.json({ error: 'El evento no tiene una función activa.' }, { status: 400 });
 
   const { data: roleRows } = await supabase
     .from('user_role_assignments')
@@ -59,7 +47,7 @@ export async function POST(request: Request) {
   if (!allowed) return NextResponse.json({ error: 'No tenés permiso para acreditar este evento.' }, { status: 403 });
 
   return NextResponse.json({
-    event: { id: event.id, name: event.name, slug: event.slug },
-    eventDate: { id: sessionEventDate.id, startDatetime: sessionEventDate.start_datetime, endDatetime: sessionEventDate.end_datetime }
+    event: { id: event.id, name: event.name, slug: event.slug, eventCode: event.event_code },
+    eventDate: { id: eventDate.id, startDatetime: eventDate.start_datetime, endDatetime: eventDate.end_datetime }
   });
 }
