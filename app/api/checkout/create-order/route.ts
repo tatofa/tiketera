@@ -22,17 +22,41 @@ function normalizeItems(body: any): CheckoutItemInput[] {
     ticketTypeId: String(item?.ticketTypeId ?? '').trim(),
     quantity: Math.max(1, Number(item?.quantity ?? 1))
   })).filter((item: CheckoutItemInput) => item.ticketTypeId.length > 0 && item.quantity > 0);
-
   if (normalized.length) return normalized;
-
   const ticketTypeId = String(body?.ticketTypeId ?? '').trim();
   const quantity = Math.max(1, Number(body?.quantity ?? 1));
   return ticketTypeId ? [{ ticketTypeId, quantity }] : [];
 }
 
+async function resolveBuyerUserId(input: { request: Request; supabaseUrl: string; anonKey?: string; adminClient: any; buyerEmail: string }) {
+  const authHeader = input.request.headers.get('authorization') ?? '';
+  const token = authHeader.replace('Bearer ', '').trim();
+
+  if (token && input.anonKey) {
+    const userClient = createClient(input.supabaseUrl, input.anonKey, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+    const { data } = await userClient.auth.getUser();
+    if (data.user?.id) return data.user.id;
+  }
+
+  if (input.buyerEmail) {
+    const { data: profile } = await input.adminClient
+      .from('profiles')
+      .select('id,email')
+      .ilike('email', input.buyerEmail)
+      .maybeSingle();
+    if (profile?.id) return profile.id as string;
+  }
+
+  return null;
+}
+
 export async function POST(request: Request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!supabaseUrl || !serviceRoleKey) return NextResponse.json({ error: 'Faltan variables de Supabase.' }, { status: 500 });
 
   const body = await request.json().catch(() => null);
@@ -49,6 +73,7 @@ export async function POST(request: Request) {
   }
 
   const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { autoRefreshToken: false, persistSession: false } });
+  const buyerUserId = await resolveBuyerUserId({ request, supabaseUrl, anonKey, adminClient: supabase, buyerEmail });
 
   const { data: eventDate, error: dateError } = await supabase
     .from('event_dates')
@@ -104,7 +129,6 @@ export async function POST(request: Request) {
     .order('created_at', { ascending: false });
 
   const feeRule = feeRules?.[0] ?? null;
-
   const subtotal = items.reduce((sum: number, item) => sum + Number(item.ticketType.price ?? 0) * item.quantity, 0);
   const serviceFee = calcFee(subtotal, feeRule ?? { percentage: 0, fixed_amount: 0, min_fee: 0, max_fee: null });
   const total = subtotal + serviceFee;
@@ -112,6 +136,7 @@ export async function POST(request: Request) {
   const currency = items[0]?.ticketType?.currency ?? 'ARS';
 
   const baseOrder = {
+    user_id: buyerUserId,
     producer_id: event.producer_id,
     buyer_name: buyerName,
     buyer_email: buyerEmail,
@@ -125,9 +150,9 @@ export async function POST(request: Request) {
   };
 
   const orderPayload: Record<string, unknown> = promoterLinkId ? { ...baseOrder, promoter_link_id: promoterLinkId } : baseOrder;
-  let orderInsert = await supabase.from('orders').insert(orderPayload as any).select('id').single();
+  let orderInsert = await supabase.from('orders').insert(orderPayload as any).select('id,user_id').single();
   if (orderInsert.error && promoterLinkId && orderInsert.error.message.toLowerCase().includes('promoter')) {
-    orderInsert = await supabase.from('orders').insert(baseOrder as any).select('id').single();
+    orderInsert = await supabase.from('orders').insert(baseOrder as any).select('id,user_id').single();
   }
 
   const order = orderInsert.data;
@@ -160,5 +185,5 @@ export async function POST(request: Request) {
   const { error: ticketsError } = await supabase.from('tickets').insert(ticketRows);
   if (ticketsError) return NextResponse.json({ error: ticketsError.message }, { status: 400 });
 
-  return NextResponse.json({ orderId: order.id, subtotal, serviceFee, total, currency });
+  return NextResponse.json({ orderId: order.id, userId: order.user_id ?? buyerUserId, subtotal, serviceFee, total, currency });
 }
