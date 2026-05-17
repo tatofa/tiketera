@@ -107,9 +107,14 @@ function CheckoutContent() {
   async function pay() {
     setPaying(true);
     setError('');
+    const supabase = createBrowserSupabaseClient();
+    const session = supabase ? (await supabase.auth.getSession()).data.session : null;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`;
+
     const res = await fetch('/api/checkout/create-order', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
         eventId: selected.event!.id,
         eventDateId: selected.eventDate!.id,
@@ -141,7 +146,7 @@ function CheckoutContent() {
             <label><span className="label">Email</span><input className="input mt-1" value={buyer.email} onChange={(e) => setBuyer({ ...buyer, email: e.target.value })} placeholder="email@dominio.com" /></label>
           </div>
           <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-5">
-            <div className="flex items-start gap-3"><ShieldCheck className="mt-1 text-red-200"/><div><p className="font-black text-white">Orden real</p><p className="mt-1 text-sm text-white/65">Este flujo crea orden, items y tickets reales en Supabase. El proveedor de pago queda para conectar después.</p></div></div>
+            <div className="flex items-start gap-3"><ShieldCheck className="mt-1 text-red-200"/><div><p className="font-black text-white">Orden real</p><p className="mt-1 text-sm text-white/65">Si estás logueado, la compra queda asociada a tu cuenta.</p></div></div>
           </div>
           <button onClick={pay} disabled={paying || !buyer.name || !buyer.email} className="btn-primary mt-6 w-full"><CreditCard size={18} className="mr-2"/>{paying ? 'Confirmando...' : `Confirmar orden ${ars(total)}`}</button>
         </div>
