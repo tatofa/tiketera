@@ -34,17 +34,36 @@ export async function POST(request: Request) {
   const eventDate = eventDates[0];
   if (!eventDate) return NextResponse.json({ error: 'El evento no tiene una función activa.' }, { status: 400 });
 
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('id,role,active')
+    .eq('id', userData.user.id)
+    .maybeSingle();
+
+  const isAdmin = Boolean(profile?.active) && ['super_admin', 'admin'].includes(String(profile?.role ?? ''));
+
   const { data: roleRows } = await supabase
     .from('user_role_assignments')
     .select('role,producer_id,event_id,active')
     .eq('profile_id', userData.user.id)
     .eq('active', true);
 
-  const allowed = (roleRows ?? []).some((row: any) =>
+  const allowedByRoleAssignments = (roleRows ?? []).some((row: any) =>
     ['super_admin', 'admin'].includes(row.role) ||
     (row.role === 'accreditor' && (!row.producer_id || row.producer_id === event.producer_id) && (!row.event_id || row.event_id === event.id))
   );
-  if (!allowed) return NextResponse.json({ error: 'No tenés permiso para acreditar este evento.' }, { status: 403 });
+
+  const { data: memberRows } = await supabase
+    .from('producer_members')
+    .select('producer_id,role')
+    .eq('profile_id', userData.user.id)
+    .eq('producer_id', event.producer_id);
+
+  const allowedByProducerMember = (memberRows ?? []).some((row: any) => ['owner', 'admin', 'accreditor'].includes(row.role));
+
+  if (!isAdmin && !allowedByRoleAssignments && !allowedByProducerMember) {
+    return NextResponse.json({ error: 'No tenés permiso para acreditar este evento.' }, { status: 403 });
+  }
 
   return NextResponse.json({
     event: { id: event.id, name: event.name, slug: event.slug, eventCode: event.event_code },
