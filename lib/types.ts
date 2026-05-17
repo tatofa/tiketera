@@ -27,6 +27,7 @@ export type TicketType = {
   saleStart: string;
   saleEnd: string;
   maxPerOrder: number;
+  capacity?: number | null;
   status: 'active' | 'paused';
 };
 
