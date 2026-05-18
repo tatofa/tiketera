@@ -28,6 +28,8 @@ export type TicketType = {
   saleEnd: string;
   maxPerOrder: number;
   capacity?: number | null;
+  isPromo?: boolean;
+  promoBundleSize?: number;
   status: 'active' | 'paused';
 };
 
