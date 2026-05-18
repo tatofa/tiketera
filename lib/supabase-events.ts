@@ -10,6 +10,10 @@ const extendedEventColumns = 'event_code,event_key,event_type,category,organizer
 function normalizeTicketTypeStatus(status: string) {
   return status === 'active' || status === 'sold_out' ? status : 'paused';
 }
+function normalizeBundleSize(value: unknown) {
+  const n = Math.round(Number(value ?? 1));
+  return Math.min(9, Math.max(1, Number.isFinite(n) ? n : 1));
+}
 
 function isFutureOrLiveDate(date: { start?: string; end?: string; status?: string }) {
   if (date.status !== 'active') return false;
@@ -29,13 +33,16 @@ function toDbEvent(event: Event, userId: string, producerId: string) {
 }
 function toDbDate(date: Event['dates'][number]) { return { id: date.id, event_id: date.eventId, start_datetime: date.start, end_datetime: date.end ?? null, status: date.status }; }
 function toDbSector(sector: Event['sectors'][number]) { return { id: sector.id, event_id: sector.eventId, name: sector.name, capacity: sector.capacity }; }
-function toDbTicketType(ticket: Event['ticketTypes'][number]) { return { id: ticket.id, event_id: ticket.eventId, sector_id: ticket.sectorId, name: ticket.name, price: ticket.price, currency: ticket.currency, sale_start: ticket.saleStart, sale_end: ticket.saleEnd, max_per_order: ticket.maxPerOrder, capacity: ticket.capacity ?? null, status: normalizeTicketTypeStatus(ticket.status) }; }
+function toDbTicketType(ticket: Event['ticketTypes'][number]) {
+  const bundleSize = normalizeBundleSize(ticket.promoBundleSize);
+  return { id: ticket.id, event_id: ticket.eventId, sector_id: ticket.sectorId, name: ticket.name, price: ticket.price, currency: ticket.currency, sale_start: ticket.saleStart, sale_end: ticket.saleEnd, max_per_order: ticket.maxPerOrder, capacity: ticket.capacity ?? null, is_promo: Boolean(ticket.isPromo), promo_bundle_size: Boolean(ticket.isPromo) ? bundleSize : 1, status: normalizeTicketTypeStatus(ticket.status) };
+}
 function mapEvent(event: any, dates: any[] = [], sectors: any[] = [], ticketTypes: any[] = [], publicOnly = false): Event {
   return {
     id: event.id, name: event.name, slug: event.slug, description: event.description ?? '', imageUrl: publicOnly ? '' : event.image_url ?? '', venue: event.venues?.name ?? event.address ?? '', status: event.status, capacity: event.capacity ?? 0, eventCode: event.event_code ?? '', eventKey: event.event_key ?? '', eventType: event.event_type ?? '', category: event.category ?? '', organizerName: event.organizer_name ?? '', artistName: event.artist_name ?? '', summary: event.summary ?? '', purchaseMessage: event.purchase_message ?? '', ageRestriction: event.age_restriction ?? '', province: event.province ?? '', locality: event.locality ?? '', address: event.address ?? '', accessPolicy: event.access_policy ?? '', termsAndConditions: event.terms_and_conditions ?? '',
     dates: dates.filter((date: any) => date.event_id === event.id).map((date: any) => ({ id: date.id, eventId: date.event_id, start: date.start_datetime, end: date.end_datetime ?? undefined, status: date.status })),
     sectors: sectors.filter((sector: any) => sector.event_id === event.id).map((sector: any) => ({ id: sector.id, eventId: sector.event_id, name: sector.name, capacity: sector.capacity ?? 0 })),
-    ticketTypes: ticketTypes.filter((ticket: any) => ticket.event_id === event.id).map((ticket: any) => ({ id: ticket.id, eventId: ticket.event_id, sectorId: ticket.sector_id, name: ticket.name, price: Number(ticket.price ?? 0), currency: ticket.currency ?? 'ARS', saleStart: ticket.sale_start, saleEnd: ticket.sale_end, maxPerOrder: ticket.max_per_order ?? 1, capacity: ticket.capacity ?? null, status: ticket.status === 'paused' ? 'paused' : 'active' }))
+    ticketTypes: ticketTypes.filter((ticket: any) => ticket.event_id === event.id).map((ticket: any) => ({ id: ticket.id, eventId: ticket.event_id, sectorId: ticket.sector_id, name: ticket.name, price: Number(ticket.price ?? 0), currency: ticket.currency ?? 'ARS', saleStart: ticket.sale_start, saleEnd: ticket.sale_end, maxPerOrder: ticket.max_per_order ?? 1, capacity: ticket.capacity ?? null, isPromo: Boolean(ticket.is_promo), promoBundleSize: normalizeBundleSize(ticket.promo_bundle_size), status: ticket.status === 'paused' ? 'paused' : 'active' }))
   };
 }
 
@@ -77,18 +84,19 @@ export async function loadEventsFromSupabase(options: LoadEventsOptions = {}) {
   const [{ data: dates }, { data: sectors }, { data: ticketTypes }] = await Promise.all([
     db.from('event_dates').select('id,event_id,start_datetime,end_datetime,status').in('event_id', ids),
     db.from('sectors').select('id,event_id,name,capacity').in('event_id', ids),
-    db.from('ticket_types').select('id,event_id,sector_id,name,price,currency,sale_start,sale_end,max_per_order,capacity,status').in('event_id', ids)
+    db.from('ticket_types').select('id,event_id,sector_id,name,price,currency,sale_start,sale_end,max_per_order,capacity,is_promo,promo_bundle_size,status').in('event_id', ids)
   ]);
   const mapped: Event[] = (events ?? []).map((event: any) => mapEvent(event, dates ?? [], sectors ?? [], ticketTypes ?? [], Boolean(options.publicOnly)));
   const visibleEvents: Event[] = options.publicOnly ? mapped.filter((event: Event) => event.dates.some((date: Event['dates'][number]) => isFutureOrLiveDate(date))) : mapped;
   return { ok: true, events: visibleEvents, error: null };
 }
 
-export type ManagedTicketForSupabase = { id: string; eventId: string; name: string; status: 'active' | 'paused' | 'sold_out' | 'hidden'; price: number; maxPerOrder: number; saleStart: string; saleEnd: string; capacity?: number | null; };
+export type ManagedTicketForSupabase = { id: string; eventId: string; name: string; status: 'active' | 'paused' | 'sold_out' | 'hidden'; price: number; maxPerOrder: number; saleStart: string; saleEnd: string; capacity?: number | null; isPromo?: boolean; promoBundleSize?: number; };
 export async function saveManagedTicketToSupabase(ticket: ManagedTicketForSupabase, sectorId: string): Promise<DbMutationResult> {
   const { supabase, userId } = await getSupabaseSession();
   if (!supabase || !userId) return { ok: false, skipped: true, error: 'Sin sesión Supabase' };
-  const { error } = await (supabase as any).from('ticket_types').upsert({ id: ticket.id, event_id: ticket.eventId, sector_id: sectorId, name: ticket.name, price: ticket.price, currency: 'ARS', sale_start: ticket.saleStart, sale_end: ticket.saleEnd, max_per_order: ticket.maxPerOrder, capacity: ticket.capacity ?? null, status: normalizeTicketTypeStatus(ticket.status) }, { onConflict: 'id' });
+  const bundleSize = normalizeBundleSize(ticket.promoBundleSize);
+  const { error } = await (supabase as any).from('ticket_types').upsert({ id: ticket.id, event_id: ticket.eventId, sector_id: sectorId, name: ticket.name, price: ticket.price, currency: 'ARS', sale_start: ticket.saleStart, sale_end: ticket.saleEnd, max_per_order: ticket.maxPerOrder, capacity: ticket.capacity ?? null, is_promo: Boolean(ticket.isPromo), promo_bundle_size: Boolean(ticket.isPromo) ? bundleSize : 1, status: normalizeTicketTypeStatus(ticket.status) }, { onConflict: 'id' });
   if (error) return { ok: false, skipped: false, error: error.message };
   return { ok: true, skipped: false, error: null };
 }
